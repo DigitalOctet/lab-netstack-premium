@@ -16,7 +16,7 @@ change_order(u_short src)
         u_char *src_ptr = (u_char *)&src;
         u_char *dst_ptr = (u_char *)&dst;
         dst_ptr[0] = src_ptr[1];
-        dst_ptr[1] = dst_ptr[0];
+        dst_ptr[1] = src_ptr[0];
         return dst;
     }
     else{
