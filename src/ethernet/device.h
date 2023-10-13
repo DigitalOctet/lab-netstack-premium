@@ -24,7 +24,7 @@
  * @param len Length of the frame.
  * 
  * @note I didn't use the same interface as that in README.pdf, because
- * I want to register different callback function for devices. And the return 
+ * I want to register different callback functions for devices. And the return 
  * value of callback is unnecessary.
  */
 typedef void (* frameReceiveCallback)(const void *, int);
