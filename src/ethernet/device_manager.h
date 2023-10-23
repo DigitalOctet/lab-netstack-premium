@@ -7,13 +7,13 @@
 #define ETHERNET_DEVICE_MANAGER_H
 
 #include "epoll_server.h"
+#include "frame.h"
 #include <pcap.h>
 #include <cstring>
 #include <string>
 
 /**
- * @brief Class supporting network device management derived from 
- * `EpollServer`.
+ * @brief Class supporting network device management.
  */
 class DeviceManager
 {
@@ -25,7 +25,7 @@ private:
 public:
     EpollServer *epoll_server;
     
-    DeviceManager();
+    DeviceManager(NetworkLayer *net);
     ~DeviceManager();
     int addDevice(const char* device);
     int findDevice(const char* device);
@@ -37,6 +37,7 @@ public:
     int addAllDevice();
     int capNext(int id);
     int capLoop(int id, int cnt);
+    void readLoop(EpollServer *epoll_server);
 };
 
 #endif /**< ETHERNET_DEVICE_MANAGER_H */

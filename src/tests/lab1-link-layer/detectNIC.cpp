@@ -7,7 +7,7 @@
 
 int main()
 {
-    DeviceManager device_manager;
+    DeviceManager device_manager(NULL);
     device_manager.listAllDevice();
     return 0;
 }

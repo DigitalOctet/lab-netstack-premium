@@ -11,13 +11,16 @@
 #include <map>
 
 /**
- * @brief Process a frame upon receiving it.
+ * @brief Process a frame upon receiving it. 
  *
  * @param buf Pointer to the frame.
  * @param len Length of the frame.
+ * @return 0 on success, -1 on error.
  * 
- * @note I didn't use the same interface as that in README.pdf, because
+ * @note 1. I didn't use the same interface as that in README.pdf, because
  * I want to register different callback functions for devices. 
+ * @note 2. Callback functions like these are just for testing because they 
+ * don't have control over the instance of a specific layer.
  */
 typedef int (* frameReceiveCallback)(const void *, int);
 
@@ -40,8 +43,9 @@ public:
     void setFrameReceiveCallback(frameReceiveCallback callback);
     int capNext();
     int capLoop(int cnt);
-    int capBuf();
+    int capNextEx(struct pcap_pkthdr **header, const u_char **data);
     int getFD();
+    unsigned int callBack(const u_char *buf, int len);
 };
 
 #endif /**< ETHERNET_DEVICE_H */

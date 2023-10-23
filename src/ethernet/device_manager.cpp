@@ -9,10 +9,10 @@
 /**
  * @brief Constructor of `DeviceManager`.
  */
-DeviceManager::DeviceManager(): 
+DeviceManager::DeviceManager(NetworkLayer *net): 
     name2id(), id2device(), next_device_ID(0)
 {
-    epoll_server = new EpollServer();
+    epoll_server = new EpollServer(net);
 
     // Find all devices.
     int ret = 0;
@@ -249,5 +249,21 @@ DeviceManager::capLoop(int id, int cnt)
         std::cerr << "No device " << id;
         std::cerr << "! Can't receive packet!" << std::endl;
         return -1;
+    }
+}
+
+/**
+ * @brief Function used by a sub-thread of my network stack to wait for 
+ * packets to arrive.
+ * 
+ * @param epoll_server Passed from the father thread.
+ * @note `while(true)` may be optimized.
+ */
+void
+DeviceManager::readLoop(EpollServer *epoll_server)
+{
+    while (true)
+    {
+        epoll_server->waitRead();
     }
 }

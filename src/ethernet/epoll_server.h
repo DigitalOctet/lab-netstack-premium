@@ -9,11 +9,12 @@
 #ifndef ETHERNET_EPOLL_SERVER_H
 #define ETHERNET_EPOLL_SERVER_H
 
+#include "../ip/ip.h"
 #include "device.h"
 #include <sys/epoll.h>
 #include <map>
 
-#define MAX_EVENTS 10
+#define MAX_EVENTS 256
 #define TIMEOUT 100
 
 class EpollServer
@@ -22,8 +23,9 @@ private:
     int epfd;
     struct epoll_event events[MAX_EVENTS];
     std::map<int, Device *> fd2device;
+    NetworkLayer *network_layer;
 public:
-    EpollServer();
+    EpollServer(NetworkLayer *net);
     ~EpollServer();
     int addRead(int fd, Device *device);
     int waitRead();

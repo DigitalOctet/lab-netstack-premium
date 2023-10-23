@@ -13,7 +13,7 @@
  * 
  * @see epoll_create
  */
-EpollServer::EpollServer(): events()
+EpollServer::EpollServer(NetworkLayer *net): events(), network_layer(net)
 {
     if((epfd = epoll_create(1)) == -1){
         std::cerr << "Epoll creation failed!" << std::endl;
@@ -69,6 +69,8 @@ EpollServer::addRead(int fd, Device *device)
  * that have some events available. Up to MAX_EVENTS are returned.
  * 
  * @return 0 on success, -1 on error.
+ * 
+ * @note 
  */
 int 
 EpollServer::waitRead()
@@ -81,11 +83,44 @@ EpollServer::waitRead()
 
     for(int i = 0; i < n_events; i++){
         auto it = fd2device.find(events[i].data.fd);
-        if(it != fd2device.end()){
-            it->second->capBuf();
-        }else{
+        if(it == fd2device.end()){
             std::cerr << "File descriptor not found!" << std::endl;
         }
+
+        // Handles a capture event.
+        struct pcap_pkthdr *header;
+        const u_char *data;
+        int ret;
+        while(true){
+            ret = it->second->capNextEx(&header, &data);
+            if(ret == 0){
+                // No packets are currently available.
+                break;
+            }
+            else if(ret == -1){
+                // Error
+                break;
+            }
+            else if(header->caplen != header->len){
+                // Drop fragmented packets.
+                continue;
+            }
+            
+            unsigned int rest_len = header->caplen;
+            unsigned int total_len = rest_len;
+            unsigned int offset = 0;
+            rest_len = it->second->callBack(data, rest_len);
+            if(rest_len == 0){
+                continue;
+            }
+            offset = total_len - rest_len;
+            if(!network_layer){
+                continue;
+            }
+            rest_len = network_layer->callBack(data + offset, rest_len);
+            // Transport layer is remained to implement.
+        }
+
     }
     return 0;
 }

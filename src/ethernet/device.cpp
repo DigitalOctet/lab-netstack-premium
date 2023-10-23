@@ -172,35 +172,40 @@ Device::capLoop(int cnt)
 }
 
 /**
- * @brief Capture all frames arrived on this device.
- * @return 0 on success, -1 on error.
+ * @brief Capture the next arrived on this device. Wrapper of `pcap_next_ex`.
+ * 
+ * @param header The header that pcap gives us.
+ * @param data Pointer to pointer to data.
+ * @return 0 if no packets are currently available, -1 on error, 1 on success.
+ * @see pcap_next_ex
  */
 int 
-Device::capBuf()
+Device::capNextEx(struct pcap_pkthdr **header, const u_char **data)
 {
-    struct pcap_pkthdr *header;	/* The header that pcap gives us */
-    const u_char *data;
     int ret;
-    do{
-        ret = pcap_next_ex(handle, &header, &data);
-        if(ret == -1){
-            std::cerr << "Frame capture failed!" << std::endl;
-            return -1;
-        }
+    ret = pcap_next_ex(handle, header, data);
+    if(ret < 0){
+        std::cerr << "Frame capture failed(" << ret << ")!" << std::endl;
+        return -1;
+    }
+    else if(ret == 0){ // No packets are currently available.
+        return 0;
+    }
 
-        frame_id++;
-        std::cout << "Frame " << frame_id << " captured." << std::endl;
+    frame_id++;
+    std::cout << "Frame " << frame_id << " captured." << std::endl;
 
-        if(callback){
-            return callback(data, header->len);
-        }
-    }while(ret != PCAP_ERROR_BREAK);
+    int offset = 0;
+    if(callback){
+        callback(*data, (*header)->caplen);
+    }
 
-    return 0;
+    return ret;
 }
 
 /**
  * @brief Get file descriptor corresponding to the device if it is available.
+ * @return FD on success, -1 on error.
  */
 int 
 Device::getFD()
@@ -209,4 +214,41 @@ Device::getFD()
         std::cerr << "File descriptor not available!" << std::endl;
     }
     return fd;
+}
+
+/**
+ * @brief Actual callback function used in my network stack on receiving a 
+ * frame.
+ * 
+ * @param buf Pointer to the frame.
+ * @param len Length of the frame.
+ * @return Length after it consumes from buf, i.e., length that should be 
+ * passed to network layer. 0 if the frame doesn't need to be passed.
+ * -1 on error.
+ */
+unsigned int 
+Device::callBack(const u_char *buf, int len)
+{
+    int rest_len = len;
+    EthernetHeader eth_header = *(EthernetHeader *)buf;
+    eth_header.ether_type = change_order(eth_header.ether_type);
+    switch (eth_header.ether_type)
+    {
+    case ETHTYPE_IPv4:
+        rest_len -= SIZE_ETHERNET;
+        // Not implemented
+        break;
+
+    case ETHTYPE_ARP:
+        rest_len = 0;
+        // Not implemented
+        break;
+    
+    default:
+        std::cerr << "No such type: " << eth_header.ether_type << std::endl; 
+        rest_len = -1;
+        break;
+    }
+
+    return rest_len;
 }

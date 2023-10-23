@@ -17,7 +17,7 @@ void readLoop(EpollServer *epoll_server)
 
 int main()
 {
-    DeviceManager device_manager;
+    DeviceManager device_manager(NULL);
     device_manager.addAllDevice();
     device_manager.setFrameReceiveCallbackAll(test_callback);
     std::thread server(readLoop, device_manager.epoll_server);

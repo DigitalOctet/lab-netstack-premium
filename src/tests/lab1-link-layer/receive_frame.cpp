@@ -10,7 +10,7 @@
 
 int main()
 {
-    DeviceManager device_manager;
+    DeviceManager device_manager(NULL);
     int device_id = device_manager.addDevice(DST_DEVICE);
     if(device_id == -1){
         std::cerr << "Add " << DST_DEVICE << " failed!" << std::endl;
