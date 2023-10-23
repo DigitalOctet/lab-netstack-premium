@@ -2,14 +2,17 @@
  * @file ip.cpp
  */
 
+#include "../ethernet/endian.h"
 #include "ip.h"
+#include "packet.h"
 #include <iostream>
 #include <thread>
 
 /**
  * @brief Constructor of `NetworkLayer`. Initialize device manager.
  */
-NetworkLayer::NetworkLayer(): callback(NULL), device_manager(this)
+NetworkLayer::NetworkLayer(): 
+    callback(NULL), device_manager(this), timer_running(false)
 {
     if(device_manager.addAllDevice() == -1){
         std::cerr << "Device manager construction failed in network layer!\n";
@@ -63,7 +66,7 @@ NetworkLayer::setIPPacketReceiveCallback(IPPacketReceiveCallback callback)
 int 
 NetworkLayer::setRoutingTable(const struct in_addr dest, 
                               const struct in_addr mask, 
-                              const void* nextHopMAC, const char *device)
+                              const void *nextHopMAC, const char *device)
 {
     return 0;
 }
@@ -82,7 +85,113 @@ unsigned int
 NetworkLayer::callBack(const u_char *buf, int len)
 {
     int rest_len = len;
-    EthernetHeader ipv4_header = *(EthernetHeader *)buf;
+    IPv4Header ipv4_header = *(IPv4Header *)buf;
+    int header_len, options_len;
+
+    // Version
+    if(GET_VERSION(ipv4_header.version_IHL) != IPv4_VERSION){
+        std::cerr << "Version field error! It's not an IPv4 packet!\n";
+        return -1;
+    }
+    
+    // IHL
+    header_len = GET_IHL(ipv4_header.version_IHL) << 2;
+    if(header_len < SIZE_IPv4){
+        std::cerr << "IHL(=" << header_len / 4 << ") error: " << "less than ";
+        std::cerr << "5!" << std::endl;
+        return -1;
+    }
+    options_len = header_len - SIZE_IPv4;
+    rest_len -= header_len;
+
+    // Ignore Type of Service, Total Length, Identification.
+    // NOTE: DF, MF, and Fragment Offset are also ignored because packets that 
+    // are fragmented have already been dropped by link layer, so we don't 
+    // care about fragmentation here.
+    // Reserved bit
+    if(GET_RESERVED(ipv4_header.flags_offset) != RESERVED_BIT){
+        std::cerr << "Reserved bit is not 0!" << std::endl;
+        return -1;
+    }
+
+    // Time to Live
+    // NOTE: In RFC791, it indicates the maximum time the datagram is allowed 
+    // to remain in the internet system. But in practice, it is usually 
+    // decreased once every hop.(And that's how IPv6 works.) For simplicity,
+    // I'll just do that.
+    if(ipv4_header.ttl == 0){
+        std::cout << "Packet timeout!" << std::endl;
+        return 0;
+    }
+    ipv4_header.ttl -= 1;
+
+    // Header Checksum
+    u_short sum = calculate_checksum((const u_short *)buf, header_len >> 1);
+    if(sum != 0){
+        std::cerr << "Checksum error!" << std::endl;
+        return -1;
+    }
+
+    // Protocol
+    
 
     return rest_len;
+}
+
+/**
+ * @brief Used for sending routing messages.
+ * @param interval_seconds
+ */
+void 
+NetworkLayer::timerCallback(int interval_milliseconds)
+{
+    while(true){
+        timer_mutex.lock();
+        if(!timer_running){
+            timer_mutex.unlock();
+            break;
+        }
+        timer_mutex.unlock();
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(interval_milliseconds)
+        );
+        // sendIPPacket();
+    }
+}
+
+/**
+ * @brief Start `timer_thread`.
+ * @param interval_seconds
+ */
+void 
+NetworkLayer::startTimer(int interval_milliseconds)
+{
+    // No need to lock here. Because when `timer_running` is false, 
+    // `timer_thread` isn't running, and when it's true, its value won't be 
+    // changed.
+    if (!timer_running){
+        timer_running = true;
+        timer_thread = std::thread(&NetworkLayer::timerCallback, 
+                                   this, interval_milliseconds);
+    }
+}
+
+/**
+ * @brief Stop `timer_thread`
+ */
+void 
+NetworkLayer::stopTimer()
+{
+    timer_mutex.lock();
+    if(timer_running){
+        timer_running = false;
+        timer_mutex.unlock();
+        if (timer_thread.joinable())
+        {
+            timer_thread.join();
+        }
+    }
+    else{
+        timer_mutex.unlock();
+    }
 }

@@ -10,6 +10,9 @@
 #include "../ethernet/device_manager.h"
 #include "routing_table.h"
 #include <netinet/ip.h>
+#include <chrono>
+#include <mutex>
+#include <thread>
 
 /**
  * @brief Process an IP packet upon receiving it.
@@ -27,9 +30,16 @@ typedef int (* IPPacketReceiveCallback)(const void* buf , int len);
  */
 class NetworkLayer
 {
+private:
     DeviceManager device_manager;
     IPPacketReceiveCallback callback;
     RoutingTable routing_table;
+    std::thread timer_thread;
+    std::mutex timer_mutex;
+    bool timer_running;
+    void timerCallback(int interval_milliseconds);
+    void startTimer(int interval_milliseconds);
+    void stopTimer();
 public:
     NetworkLayer();
     ~NetworkLayer() = default;

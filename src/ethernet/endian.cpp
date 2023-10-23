@@ -8,7 +8,7 @@
 const size_t i = 1;
 const bool is_little_endian = (*((u_char *)&i) == 1);
 
-u_short 
+inline u_short 
 change_order(u_short src)
 {
     if(is_little_endian){

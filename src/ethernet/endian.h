@@ -15,6 +15,6 @@
  * @param src Source number which possibly need reversing.
  * @return Unsigned short in the correct order.
  */
-u_short change_order(u_short src);
+inline u_short change_order(u_short src);
 
 #endif /**< ETHERNET_ENDIAN */

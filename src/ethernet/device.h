@@ -26,6 +26,13 @@ typedef int (* frameReceiveCallback)(const void *, int);
 
 /**
  * @brief Class of devices supporting sending/receiving Ethernet II frames.
+ * 
+ * @note For `dst_MAC_addr`. A device should actually maintain a table 
+ * storing IP-to-MAC relationship. But in the virtual network, an Ethernet is 
+ * just an end-to-end link with two end devices. For now I just implement 
+ * like this, setting destination MAC address to that of the other end. But 
+ * a group of hosts can actually be considered as a virtual Ethernet. I'll 
+ * implement that when I have more time.
  */
 class Device
 {
@@ -35,7 +42,16 @@ private:
     int frame_id;
     int fd;
     u_char mac_addr[ETHER_ADDR_LEN];
+    u_char dst_MAC_addr[ETHER_ADDR_LEN];
     inline bool is_valid_length(int len);
+    inline bool check_MAC(u_char MAC[ETHER_ADDR_LEN]);
+    bool handle_ARP(const u_char *buf);
+    bool reply_ARP(
+        const u_char sender_MAC[ETHER_ADDR_LEN], 
+        const u_char sender_IP[IPv4_ADDR_LEN],
+        const u_char target_MAC[ETHER_ADDR_LEN],
+        const u_char target_IP[IPv4_ADDR_LEN]
+    );
 public:
     Device(const char* device, u_char mac[ETHER_ADDR_LEN]);
     ~Device();

@@ -230,25 +230,136 @@ unsigned int
 Device::callBack(const u_char *buf, int len)
 {
     int rest_len = len;
-    EthernetHeader eth_header = *(EthernetHeader *)buf;
-    eth_header.ether_type = change_order(eth_header.ether_type);
-    switch (eth_header.ether_type)
+    EthernetHeader *eth_header = (EthernetHeader *)buf;
+    eth_header->ether_type = change_order(eth_header->ether_type);
+    switch (eth_header->ether_type)
     {
     case ETHTYPE_IPv4:
         rest_len -= SIZE_ETHERNET;
-        // Not implemented
+        if(!check_MAC(eth_header->ether_dhost)){
+            return -1;
+        }
         break;
 
     case ETHTYPE_ARP:
         rest_len = 0;
-        // Not implemented
+        if(len != SIZE_ETHERNET + SIZE_ARP){
+            std::cout << "An invalid ARP packet received!" << std::endl;
+        }
+        if(!check_MAC(eth_header->ether_dhost)){
+            return -1;
+        }
+        else if(!handle_ARP(buf + SIZE_ETHERNET)){
+            return -1;
+        }
         break;
     
     default:
-        std::cerr << "No such type: " << eth_header.ether_type << std::endl; 
+        std::cerr << "No such type: " << eth_header->ether_type << std::endl; 
         rest_len = -1;
         break;
     }
 
     return rest_len;
+}
+
+/**
+ * @brief Check whether this device is the destination.
+ * 
+ * @param MAC Destination MAC address of the frame.
+ * @return true if it is, false otherwise
+ * 
+ * @note Now it should be or there is an error.
+ */
+inline bool 
+Device::check_MAC(u_char MAC[ETHER_ADDR_LEN])
+{
+    for(int i = 0; i < ETHER_ADDR_LEN; i++){
+        if(mac_addr[i] != MAC[i]){
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * @brief Set destination MAC address on receiving an ARP frame and reply if
+ * it is a request.
+ * 
+ * @param buf Frame excluding Ethernet header.
+ * @return true on success or if it's useless, false on error.
+ * 
+ * @note The logic of responding and replying should be changed after my 
+ * virtual Ethernet is implemented.
+ */
+bool 
+Device::handle_ARP(const u_char *buf)
+{
+    // Error handling
+    struct ARPPacket *arp = (struct ARPPacket *)buf;
+    if(arp->hardware_type != HARDWARE_TYPE_REVERSED){
+        std::cout << "Invalid hardware type!" << std::endl;
+        return true;
+    }
+    if(arp->protocol_type != ETHTYPE_IPv4_REVERSED){
+        std::cout << "Invalid protocol type!" << std::endl;
+        return true;
+    }
+    if(arp->hardware_size != HARDWARE_SIZE){
+        std::cerr << "Invalid hardware size!" << std::endl;
+        return false;
+    }
+    if(arp->protocol_size != PROTOCOL_SIZE){
+        std::cerr << "Invalid protocol size!" << std::endl;
+        return false;
+    }
+
+    // Handle a request or reply.
+    if(IS_ARP_REQUEST(arp->opcode)){
+        if(!check_MAC(arp->target_MAC_addr)){
+            return false;
+        }
+        memcpy(dst_MAC_addr, arp->sender_MAC_addr, ETHER_ADDR_LEN);
+        return reply_ARP(mac_addr, arp->target_IP_addr, 
+                         arp->sender_MAC_addr, arp->sender_IP_addr);
+    }
+    else if(IS_ARP_REPLY(arp->opcode)){
+        if(!check_MAC(arp->target_MAC_addr)){
+            return false;
+        }
+        memcpy(dst_MAC_addr, arp->sender_MAC_addr, ETHER_ADDR_LEN);
+        return true;
+    }
+}
+
+/**
+ * @brief Send an ARP reply packet back.
+ * 
+ * @param sender_MAC Sender MAC address of the reply ARP packet
+ * @param sender_IP Sender IP address of the reply ARP packet
+ * @param target_MAC Target MAC address of the reply ARP packet
+ * @param target_IP Target IP address of the reply ARP packet
+ * @return true on success, false on failure.
+ */
+bool 
+Device::reply_ARP(
+    const u_char sender_MAC[ETHER_ADDR_LEN], 
+    const u_char sender_IP[IPv4_ADDR_LEN],
+    const u_char target_MAC[ETHER_ADDR_LEN],
+    const u_char target_IP[IPv4_ADDR_LEN]
+)
+{
+    struct ARPPacket *arp = new struct ARPPacket;
+    arp->hardware_type = HARDWARE_TYPE_REVERSED;
+    arp->protocol_type = ETHTYPE_IPv4_REVERSED;
+    arp->hardware_size = HARDWARE_SIZE;
+    arp->protocol_size = PROTOCOL_SIZE;
+    arp->opcode = ARP_REPLY_REVERSED;
+    memcpy(arp->sender_MAC_addr, sender_MAC, ETHER_ADDR_LEN);
+    memcpy(arp->sender_IP_addr, sender_IP, IPv4_ADDR_LEN);
+    memcpy(arp->target_MAC_addr, target_MAC, ETHER_ADDR_LEN);
+    memcpy(arp->target_IP_addr, target_IP, IPv4_ADDR_LEN);
+    int ret = sendFrame(arp, SIZE_ARP, ETHTYPE_ARP, target_MAC);
+    delete arp;
+    return ret == 0 ? true : false;
 }
