@@ -17,13 +17,30 @@
  * @param device The device name to open for sending/receiving frames.
  */
 Device::Device(const char *device, u_char mac[ETHER_ADDR_LEN]): 
-    callback(NULL), frame_id(0)
+    callback(NULL), frame_id(0), fd(-1)
 {
     // Open handler.
     char errbuf[PCAP_ERRBUF_SIZE] = "";
     handle = pcap_open_live(device, BUFSIZ, 1, 1000, errbuf);
     if(handle == NULL){
         std::cerr << "Couldn't find default device: " << errbuf << std::endl;
+        return;
+    }
+
+    // Put the handle into non-blocking mode.
+    int ret;
+    ret = pcap_setnonblock(handle, 1, errbuf);
+    if(ret == -1){
+        std::cerr << "Set non-block error: " << errbuf << std::endl;
+        return;
+    }
+
+    // Get the corresponding file descriptor.
+    fd = pcap_get_selectable_fd(handle);
+    if(fd == -1){
+        std::cerr << "No selectable descriptor available for ";
+        std::cerr << device << std::endl;
+        return;
     }
 
     // Copy mac address.
@@ -115,8 +132,7 @@ Device::capNext()
     if(callback){
         frame_id++;
         std::cout << "Frame " << frame_id << " captured." << std::endl;
-        callback(frame, header.len);
-        return 0;
+        return callback(frame, header.len);
     }
     else{
         std::cerr << "Callback function not registerd!" << std::endl;
@@ -153,4 +169,44 @@ Device::capLoop(int cnt)
         }
         return 0;
     }
+}
+
+/**
+ * @brief Capture all frames arrived on this device.
+ * @return 0 on success, -1 on error.
+ */
+int 
+Device::capBuf()
+{
+    struct pcap_pkthdr *header;	/* The header that pcap gives us */
+    const u_char *data;
+    int ret;
+    do{
+        ret = pcap_next_ex(handle, &header, &data);
+        if(ret == -1){
+            std::cerr << "Frame capture failed!" << std::endl;
+            return -1;
+        }
+
+        frame_id++;
+        std::cout << "Frame " << frame_id << " captured." << std::endl;
+
+        if(callback){
+            return callback(data, header->len);
+        }
+    }while(ret != PCAP_ERROR_BREAK);
+
+    return 0;
+}
+
+/**
+ * @brief Get file descriptor corresponding to the device if it is available.
+ */
+int 
+Device::getFD()
+{
+    if(fd == -1){
+        std::cerr << "File descriptor not available!" << std::endl;
+    }
+    return fd;
 }

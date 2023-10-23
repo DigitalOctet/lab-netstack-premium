@@ -6,14 +6,14 @@
 #ifndef ETHERNET_DEVICE_MANAGER_H
 #define ETHERNET_DEVICE_MANAGER_H
 
-#include "device.h"
+#include "epoll_server.h"
 #include <pcap.h>
 #include <cstring>
-#include <map>
 #include <string>
 
 /**
- * @brief Class supporting network device management.
+ * @brief Class supporting network device management derived from 
+ * `EpollServer`.
  */
 class DeviceManager
 {
@@ -23,6 +23,8 @@ private:
     std::map<int, Device *> id2device;
     std::map<std::string, u_char[ETHER_ADDR_LEN]> all_dev;
 public:
+    EpollServer *epoll_server;
+    
     DeviceManager();
     ~DeviceManager();
     int addDevice(const char* device);
@@ -30,7 +32,9 @@ public:
     int sendFrame(const void* buf, int len, int ethtype, 
                   const void* destmac, int id);
     int setFrameReceiveCallback(frameReceiveCallback callback, int id);
+    void setFrameReceiveCallbackAll(frameReceiveCallback callback);
     void listAllDevice();
+    int addAllDevice();
     int capNext(int id);
     int capLoop(int id, int cnt);
 };

@@ -9,8 +9,12 @@
 /**
  * @brief Constructor of `DeviceManager`.
  */
-DeviceManager::DeviceManager(): name2id(), id2device(), next_device_ID(0)
+DeviceManager::DeviceManager(): 
+    name2id(), id2device(), next_device_ID(0)
 {
+    epoll_server = new EpollServer();
+
+    // Find all devices.
     int ret = 0;
     char errbuf[PCAP_ERRBUF_SIZE] = "";
     pcap_if_t *devsp = NULL;
@@ -22,7 +26,16 @@ DeviceManager::DeviceManager(): name2id(), id2device(), next_device_ID(0)
 
     // Since my network stack only support Ethernet II now, I leave behind 
     // devices using Ethernet II. Here, they are who have MAC addresses.
+    // Moreover, I also discarded "lo"'s because they seemed not to have 
+    // selectable descriptors available.
+    bool lo_appeared = false;
     for(pcap_if_t *dev = devsp; dev != NULL; dev = dev->next){
+        if(!lo_appeared){
+            if(!strcmp(dev->name, "lo")){
+                lo_appeared = true;
+                continue;
+            }
+        }
         if (dev->addresses != NULL) {
             struct sockaddr_ll *s = (struct sockaddr_ll *)dev->addresses->addr;
             std::string dev_name = dev->name;
@@ -39,6 +52,7 @@ DeviceManager::DeviceManager(): name2id(), id2device(), next_device_ID(0)
  */
 DeviceManager::~DeviceManager()
 {
+    delete epoll_server;
     for(auto id = id2device.begin(); 
         id != id2device.end(); id++){
         delete id->second;
@@ -54,13 +68,14 @@ DeviceManager::~DeviceManager()
 int 
 DeviceManager::addDevice(const char* device)
 {
-    auto dev_it = all_dev.find(device);
+    std::string device_name = device;
+
+    auto dev_it = all_dev.find(device_name);
     if(dev_it == all_dev.end()){
         std::cerr << device << " is not one of all devices!" << std::endl;
         return -1;
     }
 
-    std::string device_name = device;
     auto it = name2id.find(device_name);
     if(it != name2id.end()){
         std::cerr << "Device " << device << " is already added!" << std::endl;
@@ -68,7 +83,9 @@ DeviceManager::addDevice(const char* device)
     }
     else{
         name2id[device_name] = next_device_ID;
-        id2device[next_device_ID] = new Device(device, dev_it->second);
+        Device* new_device = new Device(device, dev_it->second);
+        id2device[next_device_ID] = new_device;
+        epoll_server->addRead(new_device->getFD(), new_device);
         return next_device_ID++;
     }
 }
@@ -142,6 +159,21 @@ DeviceManager::setFrameReceiveCallback(frameReceiveCallback callback, int id)
 }
 
 /**
+ * @brief Register a callback function to be called each time an
+ * Ethernet II frame was received for all devices.
+ *
+ * @param callback the callback function.
+ * @see frameReceiveCallback
+ */
+void 
+DeviceManager::setFrameReceiveCallbackAll(frameReceiveCallback callback)
+{
+    for(auto &it: id2device){
+        it.second->setFrameReceiveCallback(callback);
+    }
+}
+
+/**
  * @brief List all devices found by `pcap_findalldevs`. This function is 
  * specially for Checkpoint 1.
  */
@@ -154,6 +186,26 @@ DeviceManager::listAllDevice()
                 dev.second[0], dev.second[1], dev.second[2],
                 dev.second[3], dev.second[4], dev.second[5]);
     }
+}
+
+/**
+ * @brief Add all devices found by `pcap_findalldevs`. This function is used 
+ * by network layer to add all devices to the device manager. I didn't use 
+ * `addDevice` because there is no need to find `dev` in `all_dev`.
+ * 
+ * @return 0 on success, -1 on error.
+ */
+int 
+DeviceManager::addAllDevice()
+{
+    for(auto &dev: all_dev){
+        name2id[dev.first] = next_device_ID;
+        Device* new_device = new Device(dev.first.c_str(), dev.second);
+        id2device[next_device_ID] = new_device;
+        epoll_server->addRead(new_device->getFD(), new_device);
+        next_device_ID++;
+    }
+    return 0;
 }
 
 /**

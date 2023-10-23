@@ -24,7 +24,8 @@ int main()
 
     int len = strlen(payload) + 1;
     for(int i = 0; i < 20; i++){
-        device_manager.sendFrame(payload, len, ETHTYPE, ns2_mac, device_id);
+        device_manager.sendFrame(payload, len, ETHTYPE_IPv4, 
+                                 veth2_1_mac, device_id);
     }
 
     return 0;

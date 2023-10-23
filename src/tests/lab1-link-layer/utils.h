@@ -3,15 +3,8 @@
  * @brief Define some macros and variables for tests of lab1.
  */
 
+#include "../../ethernet/endian.h"
 #include "../../ethernet/device_manager.h"
-
-/* Ethernet header */
-struct EthernetHeader
-{
-    u_char ether_dhost[ETHER_ADDR_LEN]; /* Destination host address */
-	u_char ether_shost[ETHER_ADDR_LEN]; /* Source host address */
-	u_short ether_type;                 /* IP? ARP? RARP? etc */
-};
 
 /* Source device. */
 #define SRC_DEVICE "veth1-2"
@@ -19,20 +12,17 @@ struct EthernetHeader
 /* Destination device. */
 #define DST_DEVICE "veth2-1"
 
-/* Ethernet II type. */
-#define ETHTYPE 0x0800
+/* The mac address of veth1-2 on my machine. */
+u_char veth1_2_mac[ETHER_ADDR_LEN] = {0xf6, 0x05, 0xd4, 0x2b, 0xdb, 0x5f};
 
-/* The mac address of ns1 on my machine. */
-u_char ns1_mac[ETHER_ADDR_LEN] = {0x66, 0xcc, 0xc7, 0xf0, 0x49, 0x84};
-
-/* The mac address of ns2 on my machine. */
-u_char ns2_mac[ETHER_ADDR_LEN] = {0x3e, 0x10, 0x9e, 0xf1, 0xcb, 0x3c};
+/* The mac address of veth2-1 on my machine. */
+u_char veth2_1_mac[ETHER_ADDR_LEN] = {0x4a, 0x5b, 0x71, 0x31, 0x4e, 0x2d};
 
 /* The mac address of ns3 on my machine. */
-u_char ns3_mac[ETHER_ADDR_LEN] = {0xea, 0x58, 0x7b, 0x6e, 0x46, 0xc3};
+// u_char ns3_mac[ETHER_ADDR_LEN] = {0xea, 0x58, 0x7b, 0x6e, 0x46, 0xc3};
 
 /* The mac address of ns4 on my machine. */
-u_char ns4_mac[ETHER_ADDR_LEN] = {0x86, 0x5f, 0x70, 0x13, 0x8a, 0x6c};
+// u_char ns4_mac[ETHER_ADDR_LEN] = {0x86, 0x5f, 0x70, 0x13, 0x8a, 0x6c};
 
 /** 
  * @brief The payload we use now is not a packet from link layer. It's just 
@@ -59,3 +49,32 @@ const char *payload = "Beautiful is better than ugly.\n"
 "If the implementation is hard to explain, it's a bad idea.\n"
 "If the implementation is easy to explain, it may be a good idea.\n"
 "Namespaces are one honking great idea -- let's do more of those!\n";
+
+/**
+ * @brief Process a frame upon receiving it. Just print the length, source and 
+ * destination MAC addresses, and payload string.
+ *
+ * @param buf Pointer to the frame.
+ * @param len Length of the frame.
+ */
+int 
+test_callback(const void *buf, int len)
+{
+    const unsigned char *frame = (const unsigned char *)buf;
+    EthernetHeader eth_header = *(EthernetHeader *)frame;
+    eth_header.ether_type = change_order(eth_header.ether_type);
+    const char *payload = (const char *)(frame + SIZE_ETHERNET);
+    printf("Source: %02x:%02x:%02x:%02x:%02x:%02x,\t"
+           "Destination: %02x:%02x:%02x:%02x:%02x:%02x\n"
+           "EHTER TYPE: 0x%04x\n\n"
+           "Payload(length = %d):\n%.*s\n\n", 
+           eth_header.ether_shost[0], eth_header.ether_shost[1], 
+           eth_header.ether_shost[2], eth_header.ether_shost[3], 
+           eth_header.ether_shost[4], eth_header.ether_shost[5], 
+           eth_header.ether_dhost[0], eth_header.ether_dhost[1], 
+           eth_header.ether_dhost[2], eth_header.ether_dhost[3], 
+           eth_header.ether_dhost[4], eth_header.ether_dhost[5], 
+           eth_header.ether_type, 
+           len - SIZE_ETHERNET, len - SIZE_ETHERNET, payload);
+    return 0;
+}
