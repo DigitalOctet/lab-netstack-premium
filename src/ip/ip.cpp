@@ -12,7 +12,8 @@
  * @brief Constructor of `NetworkLayer`. Initialize device manager.
  */
 NetworkLayer::NetworkLayer(): 
-    callback(NULL), device_manager(this), timer_running(false)
+    callback(NULL), device_manager(this), 
+    timer_running(false), routing_table(&device_manager)
 {
     if(device_manager.addAllDevice() == -1){
         std::cerr << "Device manager construction failed in network layer!\n";
@@ -35,6 +36,62 @@ int
 NetworkLayer::sendIPPacket(const struct in_addr src, const struct in_addr dest,
                            int proto, const void* buf, int len)
 {
+    // Check protocol
+    if((proto != IPv4_PROTOCOL_TCP) && 
+       (proto != IPv4_PROTOCOL_TESTING1) &&
+       (proto != IPv4_PROTOCOL_TESTING2))
+    {
+        std::cerr << "Protocol " << proto << " not supported!" << std::endl;
+        return -1;
+    }
+
+    u_char *packet = new u_char[SIZE_IPv4 + len];
+    memcpy(packet + SIZE_IPv4, buf, len);
+    IPv4Header *ipv4_header = (IPv4Header *)packet;
+
+    // Version & IHL
+    ipv4_header->version_IHL = IPv4_VERSION | DEFAULT_IHL;
+    // Type of Service
+    ipv4_header->service_type = DEFAULT_TOS;
+    // Total Length
+    ipv4_header->total_len = SIZE_IPv4 + len;
+    // Identification
+    ipv4_header->id = DEFAULT_ID;
+    // Reserved bit, flags and Fragment Offset
+    ipv4_header->flags_offset = DEFAULT_FLAGS_OFFSET;
+    // Time to Live
+    ipv4_header->ttl = DEFAULT_TTL;
+    // Protocol
+    ipv4_header->protocal = proto;
+    // Checksum: firstly set to 0
+    ipv4_header->checksum = 0;
+    // Addresses
+    ipv4_header->src_addr = src;
+    ipv4_header->dst_addr = dest;
+    // Calculate checksum
+    ipv4_header->checksum = calculate_checksum((const u_short *)ipv4_header, 
+                                               SIZE_IPv4 >> 1);
+    
+    // Look up routing table and send it to link layer.
+    int device_id = routing_table.findEntry(ipv4_header->dst_addr);
+    if(device_id == -1){
+        std::cerr << "IP address " << ipv4_header->dst_addr.s_addr;
+        std::cerr << " not found!" << std::endl;
+        delete[] packet;
+        return -1;
+    }
+    if(
+        device_manager.sendFrame(
+            (const void *)packet, ipv4_header->total_len,
+            ETHTYPE_IPv4, ipv4_header->dst_addr, device_id
+        ) == -1
+    ){
+        std::cerr << "Send frame Error!" << std::endl;
+        delete[] packet;
+        return -1;
+    }
+
+    delete[] packet;
     return 0;
 }
 
@@ -80,6 +137,9 @@ NetworkLayer::setRoutingTable(const struct in_addr dest,
  * @return Length after it consumes from buf, i.e., length that should be 
  * passed to transport layer. 0 if the frame doesn't need to be passed.
  * -1 on error.
+ * 
+ * @see RFC791 & RFC790 & RFC3692 and 
+ * https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
  */
 unsigned int 
 NetworkLayer::callBack(const u_char *buf, int len)
@@ -133,7 +193,52 @@ NetworkLayer::callBack(const u_char *buf, int len)
     }
 
     // Protocol
+    // See RFC790 & RFC3692 and 
+    // https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
+    switch (ipv4_header.protocal)
+    {
+    case IPv4_PROTOCOL_TCP:
+        if(!routing_table.findMyIP(ipv4_header.dst_addr)){
+            rest_len = 0;
+            int device_id = routing_table.findEntry(ipv4_header.dst_addr);
+            if(device_id != -1){
+                u_char *dst_addr = (u_char *)&ipv4_header.dst_addr;
+                u_char *src_addr = (u_char *)&ipv4_header.src_addr;
+                printf("Can't route from %02x.%02x.%02x.%02x to "
+                       "%02x.%02x.%02x.%02x!\n",
+                       src_addr[0], src_addr[1], src_addr[2], src_addr[3],
+                       dst_addr[0], dst_addr[1], dst_addr[2], dst_addr[3]);
+                return -1;
+            }
+            else{
+                if(
+                    device_manager.sendFrame(
+                        buf, len, ETHTYPE_IPv4, ipv4_header.dst_addr, device_id
+                    ) == -1
+                ){
+                    std::cerr << "Routing error: frame sending failed!\n";
+                    return -1;
+                }
+            }
+        }
+        break;
+
+    case IPv4_PROTOCOL_TESTING1:
+        rest_len = 0;
+        
+        break;
+
+    case IPv4_PROTOCOL_TESTING2:
+
+        rest_len = 0;
+        break;
     
+    default:
+        std::cerr << "Protocol " << ipv4_header.protocal;
+        std::cerr << " is not implemented!" << std::endl;
+        rest_len = -1;
+        break;
+    }
 
     return rest_len;
 }

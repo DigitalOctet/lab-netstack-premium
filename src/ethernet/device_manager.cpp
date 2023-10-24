@@ -117,18 +117,18 @@ DeviceManager::findDevice(const char* device)
  * @param buf Pointer to the payload.
  * @param len Length of the payload.
  * @param ethtype EtherType field value of this frame.
- * @param destmac MAC address of the destination.
+ * @param dest_ip IP address of the destination.
  * @param id ID of the device(returned by `addDevice`) to send on.
  * @return 0 on success, -1 on error.
  * @see addDevice
  */
 int 
 DeviceManager::sendFrame(const void* buf, int len, int ethtype, 
-                         const void* destmac, int id)
+                         struct in_addr dest_ip, int id)
 {
     auto it = id2device.find(id);
     if(it != id2device.end()){
-        return it->second->sendFrame(buf, len, ethtype, destmac);
+        return it->second->sendFrame(buf, len, ethtype, dest_ip);
     }
     else{
         std::cerr << "No device " << id << "!" << std::endl;
@@ -266,4 +266,21 @@ DeviceManager::readLoop(EpollServer *epoll_server)
     {
         epoll_server->waitRead();
     }
+}
+
+/**
+ * @brief Set IP address for `device`.
+ * 
+ * @param addr IP address of the device.
+ * @param device_name Name of the device.
+ */
+void 
+DeviceManager::setIP(struct in_addr addr, const char *device_name)
+{
+    int device_id = findDevice(device_name);
+    if(device_id != -1){
+        Device *device = id2device[device_id];
+        device->setIP(addr);
+    }
+    return;
 }

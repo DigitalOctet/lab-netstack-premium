@@ -30,7 +30,7 @@ public:
     int addDevice(const char* device);
     int findDevice(const char* device);
     int sendFrame(const void* buf, int len, int ethtype, 
-                  const void* destmac, int id);
+                  struct in_addr dest_ip, int id);
     int setFrameReceiveCallback(frameReceiveCallback callback, int id);
     void setFrameReceiveCallbackAll(frameReceiveCallback callback);
     void listAllDevice();
@@ -38,6 +38,7 @@ public:
     int capNext(int id);
     int capLoop(int id, int cnt);
     void readLoop(EpollServer *epoll_server);
+    void setIP(struct in_addr addr, const char *device);
 };
 
 #endif /**< ETHERNET_DEVICE_MANAGER_H */

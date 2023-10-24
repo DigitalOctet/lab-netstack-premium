@@ -72,9 +72,9 @@ struct ARPPacket
 	u_char protocol_size;  // 5
 	u_short opcode;        // 6
 	u_char sender_MAC_addr[ETHER_ADDR_LEN]; // 8
-	u_char sender_IP_addr[IPv4_ADDR_LEN];   // 14
+	struct in_addr sender_IP_addr;   // 14
 	u_char target_MAC_addr[ETHER_ADDR_LEN]; // 18
-	u_char target_IP_addr[ETHER_ADDR_LEN];  // 24 -- 28
+	struct in_addr target_IP_addr;  // 24 -- 28
 };
 
 #endif /**< ETHERNET_FRAME_H */

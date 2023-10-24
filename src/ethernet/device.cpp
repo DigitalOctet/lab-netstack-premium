@@ -17,7 +17,7 @@
  * @param device The device name to open for sending/receiving frames.
  */
 Device::Device(const char *device, u_char mac[ETHER_ADDR_LEN]): 
-    callback(NULL), frame_id(0), fd(-1)
+    callback(NULL), frame_id(0), fd(-1), ip_addr({0})
 {
     // Open handler.
     char errbuf[PCAP_ERRBUF_SIZE] = "";
@@ -73,12 +73,13 @@ Device::is_valid_length(int len)
 * @param buf Pointer to the payload.
 * @param len Length of the payload.
 * @param ethtype EtherType field value of this frame.
-* @param destmac MAC address of the destination.
+* @param dest_ip IP address of the destination.
 * @return 0 on success, -1 on error.
 * @see addDevice
 */
 int 
-Device::sendFrame(const void* buf, int len, int ethtype, const void* destmac)
+Device::sendFrame(const void* buf, int len, 
+                  int ethtype, const struct in_addr dest_ip)
 {
     int frame_len;
     u_char *frame;
@@ -88,7 +89,7 @@ Device::sendFrame(const void* buf, int len, int ethtype, const void* destmac)
     u_short correct_ethtype = change_order(ethtype);
     frame_len = SIZE_ETHERNET + len;
     frame = new u_char[frame_len];
-    memcpy(frame, destmac, ETHER_ADDR_LEN);
+    memcpy(frame, dst_MAC_addr, ETHER_ADDR_LEN);
     memcpy(frame + ETHER_ADDR_LEN, mac_addr, ETHER_ADDR_LEN);
     memcpy(frame + 2 * ETHER_ADDR_LEN, &correct_ethtype, ETHER_TYPE_LEN);
     memcpy(frame + SIZE_ETHERNET, buf, len);
@@ -344,9 +345,9 @@ Device::handle_ARP(const u_char *buf)
 bool 
 Device::reply_ARP(
     const u_char sender_MAC[ETHER_ADDR_LEN], 
-    const u_char sender_IP[IPv4_ADDR_LEN],
+    const struct in_addr sender_IP,
     const u_char target_MAC[ETHER_ADDR_LEN],
-    const u_char target_IP[IPv4_ADDR_LEN]
+    const struct in_addr target_IP
 )
 {
     struct ARPPacket *arp = new struct ARPPacket;
@@ -356,10 +357,20 @@ Device::reply_ARP(
     arp->protocol_size = PROTOCOL_SIZE;
     arp->opcode = ARP_REPLY_REVERSED;
     memcpy(arp->sender_MAC_addr, sender_MAC, ETHER_ADDR_LEN);
-    memcpy(arp->sender_IP_addr, sender_IP, IPv4_ADDR_LEN);
+    arp->sender_IP_addr = sender_IP;
     memcpy(arp->target_MAC_addr, target_MAC, ETHER_ADDR_LEN);
-    memcpy(arp->target_IP_addr, target_IP, IPv4_ADDR_LEN);
-    int ret = sendFrame(arp, SIZE_ARP, ETHTYPE_ARP, target_MAC);
+    arp->target_IP_addr = target_IP;
+    int ret = sendFrame(arp, SIZE_ARP, ETHTYPE_ARP, target_IP);
     delete arp;
     return ret == 0 ? true : false;
+}
+
+/**
+ * @brief Set IP address for `device`.
+ * @param addr IP address of the device.
+ */
+void 
+Device::setIP(struct in_addr addr)
+{
+    ip_addr = addr;
 }

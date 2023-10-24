@@ -41,6 +41,7 @@ private:
     frameReceiveCallback callback;
     int frame_id;
     int fd;
+    struct in_addr ip_addr;
     u_char mac_addr[ETHER_ADDR_LEN];
     u_char dst_MAC_addr[ETHER_ADDR_LEN];
     inline bool is_valid_length(int len);
@@ -48,20 +49,22 @@ private:
     bool handle_ARP(const u_char *buf);
     bool reply_ARP(
         const u_char sender_MAC[ETHER_ADDR_LEN], 
-        const u_char sender_IP[IPv4_ADDR_LEN],
+        const struct in_addr sender_IP,
         const u_char target_MAC[ETHER_ADDR_LEN],
-        const u_char target_IP[IPv4_ADDR_LEN]
+        const struct in_addr target_IP
     );
 public:
     Device(const char* device, u_char mac[ETHER_ADDR_LEN]);
     ~Device();
-    int sendFrame(const void* buf, int len, int ethtype, const void* destmac);
+    int sendFrame(const void* buf, int len, 
+                  int ethtype, const struct in_addr dest_ip);
     void setFrameReceiveCallback(frameReceiveCallback callback);
     int capNext();
     int capLoop(int cnt);
     int capNextEx(struct pcap_pkthdr **header, const u_char **data);
     int getFD();
     unsigned int callBack(const u_char *buf, int len);
+    void setIP(struct in_addr addr);
 };
 
 #endif /**< ETHERNET_DEVICE_H */
