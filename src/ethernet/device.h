@@ -46,6 +46,7 @@ private:
     u_char dst_MAC_addr[ETHER_ADDR_LEN];
     inline bool is_valid_length(int len);
     inline bool check_MAC(u_char MAC[ETHER_ADDR_LEN]);
+    inline bool check_MAC();
     bool handle_ARP(const u_char *buf);
     bool reply_ARP(
         const u_char sender_MAC[ETHER_ADDR_LEN], 
@@ -54,7 +55,8 @@ private:
         const struct in_addr target_IP
     );
 public:
-    Device(const char* device, u_char mac[ETHER_ADDR_LEN]);
+    int id;
+    Device(const char* device, u_char mac[ETHER_ADDR_LEN], int i);
     ~Device();
     int sendFrame(const void* buf, int len, 
                   int ethtype, const struct in_addr dest_ip);
@@ -62,9 +64,10 @@ public:
     int capNext();
     int capLoop(int cnt);
     int capNextEx(struct pcap_pkthdr **header, const u_char **data);
-    int getFD();
+    inline int getFD();
     unsigned int callBack(const u_char *buf, int len);
     void setIP(struct in_addr addr);
+    bool request_ARP();
 };
 
 #endif /**< ETHERNET_DEVICE_H */

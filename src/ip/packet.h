@@ -26,6 +26,7 @@
 
 #include <netinet/ip.h>
 #include <sys/types.h>
+#include <vector>
 
 /* IPv4 addresses are 4 bytes */
 #define IPv4_ADDR_LEN	4
@@ -59,6 +60,9 @@
 #define IPv4_PROTOCOL_TESTING1 253
 /* Routing message */
 #define IPv4_PROTOCOL_TESTING2 254
+/* Address */
+/* IP address for broadcast */
+#define IPv4_ADDR_BROADCAST 0xffffffff
 
 /* IPv4 header excluding options */
 struct IPv4Header
@@ -82,5 +86,41 @@ struct IPv4Header
  * @return checksum
  */
 u_short calculate_checksum(const u_short *header, int len);
+
+/* HELLO packets are always 8 bytes */
+#define SIZE_HELLO_PACKET 8
+
+/* HELLO packet */
+struct HelloPacket
+{
+    struct in_addr router_id;
+    unsigned int age_is_request; // 2 bytes for age, 2 bytes for is_request
+};
+
+/**
+ * @brief Class for a link state packet.
+ * 
+ * @param router_id All IPv4 addresses of the host.
+ * @param seq Seqence number.
+ * @param age Age.
+ * @param neighbors The first IP addresses of the neighbors of the host.
+ * We only need one address to identify the host since the link state packet 
+ * of the host should be successful sent to every hosts in the network, which 
+ * contains all of its IP addresses so that receiver are able to construct a 
+ * complete routing table.
+ * 
+ * @note All variables are public for easy access.
+ */
+class LinkStatePacket
+{
+public:
+    unsigned int seq;
+    unsigned int age;
+    std::vector<struct in_addr> router_id;
+    std::vector<struct in_addr> mask;
+    std::vector<std::pair<struct in_addr, int>> neighbors;
+    LinkStatePacket() = default;
+    ~LinkStatePacket() = default;
+};
 
 #endif /**< IP_PACKET_H */

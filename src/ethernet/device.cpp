@@ -16,8 +16,8 @@
  * 
  * @param device The device name to open for sending/receiving frames.
  */
-Device::Device(const char *device, u_char mac[ETHER_ADDR_LEN]): 
-    callback(NULL), frame_id(0), fd(-1), ip_addr({0})
+Device::Device(const char *device, u_char mac[ETHER_ADDR_LEN], int i): 
+    callback(NULL), frame_id(0), fd(-1), ip_addr({0}), id(i)
 {
     // Open handler.
     char errbuf[PCAP_ERRBUF_SIZE] = "";
@@ -45,6 +45,7 @@ Device::Device(const char *device, u_char mac[ETHER_ADDR_LEN]):
 
     // Copy mac address.
     memcpy(mac_addr, mac, ETHER_ADDR_LEN);
+    memset(dst_MAC_addr, 0, ETHER_ADDR_LEN);
 }
 
 /**
@@ -64,7 +65,7 @@ Device::~Device()
 inline bool
 Device::is_valid_length(int len)
 {
-    return len >= 46 && len <= 1500;
+    return len >= MIN_PAYLOAD && len <= MAX_PAYLOAD;
 }
 
 /**
@@ -86,9 +87,14 @@ Device::sendFrame(const void* buf, int len,
     if(!is_valid_length(len)){
         std::cerr << "Data length invalid!" << std::endl;
     }
-    u_short correct_ethtype = change_order(ethtype);
+    u_short correct_ethtype = change_order((u_short)ethtype);
     frame_len = SIZE_ETHERNET + len;
     frame = new u_char[frame_len];
+    if(!check_MAC()){
+        std::cerr << "Send frame failed: destination MAC unavailable!\n";
+        delete[] frame;
+        return -1;
+    }
     memcpy(frame, dst_MAC_addr, ETHER_ADDR_LEN);
     memcpy(frame + ETHER_ADDR_LEN, mac_addr, ETHER_ADDR_LEN);
     memcpy(frame + 2 * ETHER_ADDR_LEN, &correct_ethtype, ETHER_TYPE_LEN);
@@ -208,7 +214,7 @@ Device::capNextEx(struct pcap_pkthdr **header, const u_char **data)
  * @brief Get file descriptor corresponding to the device if it is available.
  * @return FD on success, -1 on error.
  */
-int 
+inline int 
 Device::getFD()
 {
     if(fd == -1){
@@ -284,6 +290,23 @@ Device::check_MAC(u_char MAC[ETHER_ADDR_LEN])
 }
 
 /**
+ * @brief Check whether `dst_MAC_addr` is not empty.
+ * 
+ * @return true if it is, false otherwise
+ * 
+ */
+inline bool 
+Device::check_MAC()
+{
+    for(int i = 0; i < ETHER_ADDR_LEN; i++){
+        if(mac_addr[i] != 0){
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * @brief Set destination MAC address on receiving an ARP frame and reply if
  * it is a request.
  * 
@@ -317,9 +340,6 @@ Device::handle_ARP(const u_char *buf)
 
     // Handle a request or reply.
     if(IS_ARP_REQUEST(arp->opcode)){
-        if(!check_MAC(arp->target_MAC_addr)){
-            return false;
-        }
         memcpy(dst_MAC_addr, arp->sender_MAC_addr, ETHER_ADDR_LEN);
         return reply_ARP(mac_addr, arp->target_IP_addr, 
                          arp->sender_MAC_addr, arp->sender_IP_addr);
@@ -358,6 +378,36 @@ Device::reply_ARP(
     arp->opcode = ARP_REPLY_REVERSED;
     memcpy(arp->sender_MAC_addr, sender_MAC, ETHER_ADDR_LEN);
     arp->sender_IP_addr = sender_IP;
+    memcpy(arp->target_MAC_addr, target_MAC, ETHER_ADDR_LEN);
+    arp->target_IP_addr = target_IP;
+    int ret = sendFrame(arp, SIZE_ARP, ETHTYPE_ARP, target_IP);
+    delete arp;
+    return ret == 0 ? true : false;
+}
+
+/**
+ * @brief Send an ARP request packet back.
+ * 
+ * @return true on success, false on failure.
+ */
+bool 
+Device::request_ARP(
+)
+{
+    u_char target_MAC[ETHER_ADDR_LEN];
+    for(int i = 0; i < ETHER_ADDR_LEN; i++){
+        target_MAC[i] = 0xff;
+    }
+    struct in_addr target_IP;
+    target_IP.s_addr = IPv4_ADDR_BROADCAST;
+    struct ARPPacket *arp = new struct ARPPacket;
+    arp->hardware_type = HARDWARE_TYPE_REVERSED;
+    arp->protocol_type = ETHTYPE_IPv4_REVERSED;
+    arp->hardware_size = HARDWARE_SIZE;
+    arp->protocol_size = PROTOCOL_SIZE;
+    arp->opcode = ARP_REQUEST_REVERSED;
+    memcpy(arp->sender_MAC_addr, mac_addr, ETHER_ADDR_LEN);
+    arp->sender_IP_addr = ip_addr;
     memcpy(arp->target_MAC_addr, target_MAC, ETHER_ADDR_LEN);
     arp->target_IP_addr = target_IP;
     int ret = sendFrame(arp, SIZE_ARP, ETHTYPE_ARP, target_IP);

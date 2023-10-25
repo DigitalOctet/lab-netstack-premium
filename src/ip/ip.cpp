@@ -3,6 +3,7 @@
  */
 
 #include "../ethernet/endian.h"
+#include "../ethernet/frame.h"
 #include "ip.h"
 #include "packet.h"
 #include <iostream>
@@ -72,23 +73,32 @@ NetworkLayer::sendIPPacket(const struct in_addr src, const struct in_addr dest,
     ipv4_header->checksum = calculate_checksum((const u_short *)ipv4_header, 
                                                SIZE_IPv4 >> 1);
     
-    // Look up routing table and send it to link layer.
-    int device_id = routing_table.findEntry(ipv4_header->dst_addr);
-    if(device_id == -1){
-        std::cerr << "IP address " << ipv4_header->dst_addr.s_addr;
-        std::cerr << " not found!" << std::endl;
-        delete[] packet;
-        return -1;
+    // Send packets
+    if(proto == IPv4_PROTOCOL_TESTING1 || proto == IPv4_PROTOCOL_TESTING2){
+        // Broadcast
+        device_manager.sendFrameAll(
+            (const void *)packet, ipv4_header->total_len, ETHTYPE_IPv4, dest
+        );
     }
-    if(
-        device_manager.sendFrame(
-            (const void *)packet, ipv4_header->total_len,
-            ETHTYPE_IPv4, ipv4_header->dst_addr, device_id
-        ) == -1
-    ){
-        std::cerr << "Send frame Error!" << std::endl;
-        delete[] packet;
-        return -1;
+    else{
+        // Look up routing table and send it to link layer.
+        int device_id = routing_table.findEntry(ipv4_header->dst_addr);
+        if(device_id == -1){
+            std::cerr << "IP address " << ipv4_header->dst_addr.s_addr;
+            std::cerr << " not found!" << std::endl;
+            delete[] packet;
+            return -1;
+        }
+        if(
+            device_manager.sendFrame(
+                (const void *)packet, ipv4_header->total_len,
+                ETHTYPE_IPv4, ipv4_header->dst_addr, device_id
+            ) == -1
+        ){
+            std::cerr << "Send frame Error!" << std::endl;
+            delete[] packet;
+            return -1;
+        }
     }
 
     delete[] packet;
@@ -116,7 +126,7 @@ NetworkLayer::setIPPacketReceiveCallback(IPPacketReceiveCallback callback)
  *
  * @param dest The destination IP prefix.
  * @param mask The subnet mask of the destination IP prefix.
- * @param nextHopMAC MAC address of the next hop.
+ * @param nextHopMAC MAC address of the next hop.(ignored in my implementation)
  * @param device Name of device to send packets on.
  * @return 0 on success , -1 on error
  */
@@ -125,6 +135,24 @@ NetworkLayer::setRoutingTable(const struct in_addr dest,
                               const struct in_addr mask, 
                               const void *nextHopMAC, const char *device)
 {
+    routing_table.table_mutex.lock();
+    Entry e;
+    e.IP_addr = dest;
+    e.mask = mask;
+    e.device_id = device_manager.findDevice(device);
+    bool exist =false;
+    for(auto &entry: routing_table.routing_table){
+        if(entry.IP_addr.s_addr == e.IP_addr.s_addr &&
+            entry.mask.s_addr == e.mask.s_addr)
+        {
+            exist = true;
+            break;
+        }
+    }
+    if(!exist){
+        routing_table.routing_table.push_back(e);
+    }
+    routing_table.table_mutex.unlock();
     return 0;
 }
 
@@ -134,6 +162,7 @@ NetworkLayer::setRoutingTable(const struct in_addr dest,
  * 
  * @param buf Pointer to the IP packet.
  * @param len Length of the IP packet.
+ * @param device_id ID of the device receiving the packet.
  * @return Length after it consumes from buf, i.e., length that should be 
  * passed to transport layer. 0 if the frame doesn't need to be passed.
  * -1 on error.
@@ -142,7 +171,7 @@ NetworkLayer::setRoutingTable(const struct in_addr dest,
  * https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
  */
 unsigned int 
-NetworkLayer::callBack(const u_char *buf, int len)
+NetworkLayer::callBack(const u_char *buf, int len, int device_id)
 {
     int rest_len = len;
     IPv4Header ipv4_header = *(IPv4Header *)buf;
@@ -177,7 +206,7 @@ NetworkLayer::callBack(const u_char *buf, int len)
     // Time to Live
     // NOTE: In RFC791, it indicates the maximum time the datagram is allowed 
     // to remain in the internet system. But in practice, it is usually 
-    // decreased once every hop.(And that's how IPv6 works.) For simplicity,
+    // decreased once per hop.(And that's how IPv6 works.) For simplicity,
     // I'll just do that.
     if(ipv4_header.ttl == 0){
         std::cout << "Packet timeout!" << std::endl;
@@ -200,8 +229,8 @@ NetworkLayer::callBack(const u_char *buf, int len)
     case IPv4_PROTOCOL_TCP:
         if(!routing_table.findMyIP(ipv4_header.dst_addr)){
             rest_len = 0;
-            int device_id = routing_table.findEntry(ipv4_header.dst_addr);
-            if(device_id != -1){
+            int to_device_id = routing_table.findEntry(ipv4_header.dst_addr);
+            if(to_device_id == -1){
                 u_char *dst_addr = (u_char *)&ipv4_header.dst_addr;
                 u_char *src_addr = (u_char *)&ipv4_header.src_addr;
                 printf("Can't route from %02x.%02x.%02x.%02x to "
@@ -224,12 +253,16 @@ NetworkLayer::callBack(const u_char *buf, int len)
         break;
 
     case IPv4_PROTOCOL_TESTING1:
+        if(!handleHello(buf, rest_len, device_id)){
+            return -1;
+        }
         rest_len = 0;
-        
         break;
 
     case IPv4_PROTOCOL_TESTING2:
-
+        if(!handleLinkState(buf, rest_len, device_id)){
+            return -1;
+        }
         rest_len = 0;
         break;
     
@@ -245,11 +278,15 @@ NetworkLayer::callBack(const u_char *buf, int len)
 
 /**
  * @brief Used for sending routing messages.
- * @param interval_seconds
+ * @param interval_seconds 
  */
 void 
 NetworkLayer::timerCallback(int interval_milliseconds)
 {
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds(interval_milliseconds)
+    );
+    device_manager.requestARP();
     while(true){
         timer_mutex.lock();
         if(!timer_running){
@@ -260,7 +297,11 @@ NetworkLayer::timerCallback(int interval_milliseconds)
         std::this_thread::sleep_for(
             std::chrono::milliseconds(interval_milliseconds)
         );
-        // sendIPPacket();
+        sendHelloPacket();
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(interval_milliseconds)
+        );
+        sendLinkStatePacket();
     }
 }
 
@@ -299,4 +340,205 @@ NetworkLayer::stopTimer()
     else{
         timer_mutex.unlock();
     }
+}
+
+/**
+ * @brief Send HELLO packets from all devices. One device, one packet.
+ * @return true on success, false on error.
+ */
+bool 
+NetworkLayer::sendHelloPacket()
+{
+    if(routing_table.my_IP_addrs.size() != 0){
+        struct in_addr dest;
+        int min_len = MIN_PAYLOAD - SIZE_IPv4;
+        u_char *packet = new u_char[min_len];
+        dest.s_addr = IPv4_ADDR_BROADCAST;
+        memset(packet, 0, min_len);
+        memcpy(packet, &routing_table.my_IP_addrs[0], IPv4_ADDR_LEN);
+        packet[IPv4_ADDR_LEN] = 0x01; // is_request
+        packet[IPv4_ADDR_LEN + 2] = 60u;
+        sendIPPacket(routing_table.my_IP_addrs[0], dest, 
+                     IPv4_PROTOCOL_TESTING1, packet, min_len);
+        delete[] packet;
+    }
+}
+
+/**
+ * @brief Send link state packets from all devices. One device, one packet.
+ * @return true on success, false on error.
+ */
+bool 
+NetworkLayer::sendLinkStatePacket()
+{
+    int addr_size = routing_table.my_IP_addrs.size();
+    if(addr_size != 0){
+        struct in_addr dest;
+        dest.s_addr = IPv4_ADDR_BROADCAST;
+        u_char *packet;
+        int min_len = MIN_PAYLOAD - SIZE_IPv4;
+        int max_len = MAX_PAYLOAD - SIZE_IPv4;
+        int len = 8; // seq and age
+        int neighbor_size = routing_table.neighbors.size();
+        len += ((addr_size + neighbor_size) << 3);
+        len = (len < min_len) ? min_len : len;
+        if(len > max_len){
+            std::cerr << "Link state packet too large!" << std::endl;
+            return false;
+        }
+        packet = new u_char[len];
+        memset(packet, 0, len);
+        unsigned int reversed_seq = change_order(routing_table.seq);
+        routing_table.seq++;
+        memcpy(packet, &reversed_seq, 4);
+        unsigned int reversed_age = change_order(60u);
+        memcpy(packet + 4, &reversed_age, 4);
+        int offset = 12;
+        u_short addr_size_reversed = change_order((u_short)addr_size);
+        u_short neighbor_size_reversed = change_order((u_short)neighbor_size);
+        memcpy(packet + 8, &addr_size_reversed, 2);
+        memcpy(packet + 10, &neighbor_size_reversed, 2);
+        for(auto &addr: routing_table.my_IP_addrs){
+            memcpy(packet + offset, &addr, 4);
+            offset += 4;
+        }
+        for(auto &addr: routing_table.masks){
+            memcpy(packet + offset, &addr, 4);
+            offset += 4;
+        }
+        for(auto &neighbor: routing_table.neighbors){
+            memcpy(packet + offset, &neighbor.first, 4);
+            offset += 4;
+            unsigned int reversed_dist = change_order(1u);
+            memcpy(packet + offset, &reversed_dist, 4);
+            offset += 4;
+        }
+        sendIPPacket(routing_table.my_IP_addrs[0], dest, 
+                     IPv4_PROTOCOL_TESTING2, packet, len);
+        delete[] packet;
+    }
+}
+
+/**
+ * @brief HELLO packet handler.
+ * 
+ * @param buf IPv4 header + HELLO packet.
+ * @param len Length of IPv4 packet.
+ * @param device_id Device ID where the packet comes from.
+ * @return true on success, false on failure.
+ */
+bool 
+NetworkLayer::handleHello(const u_char *buf, int len, int device_id)
+{
+    bool ret;
+    u_short is_request = *(u_short *)(buf + SIZE_IPv4 + IPv4_ADDR_LEN);
+    is_request = change_order(is_request);
+    struct in_addr dest_ip = *(struct in_addr *)(buf + SIZE_IPv4);
+    if(is_request){ // Send back
+        u_char *packet = new u_char[len];
+        memcpy(packet, buf, len);
+        packet[SIZE_IPv4 + IPv4_ADDR_LEN] = 0x00; // reply
+        struct in_addr src_ip = routing_table.my_IP_addrs[0];
+        memcpy(packet + SIZE_IPv4, &src_ip, IPv4_ADDR_LEN);
+        if(
+            device_manager.sendFrame(packet, len, ETHTYPE_IPv4,
+                                     dest_ip, device_id) == -1
+        ){
+            delete[] packet;
+            return false;
+        }
+    }
+    
+    // Update neighbors
+    bool exist = false;
+    u_short age = *(u_short *)(buf + SIZE_IPv4 + IPv4_ADDR_LEN + 2);
+    age = change_order(age);
+    unsigned int age_is_request = ((unsigned int)age << 16) | is_request;
+    routing_table.neighbor_mutex.lock();
+    for(int i = 0; i < routing_table.neighbors.size(); i++){
+        if(routing_table.neighbors[i].first.s_addr == dest_ip.s_addr){
+            routing_table.neighbors[i] = std::make_pair(dest_ip, 
+                                                        age_is_request);
+            exist = true;
+            break;
+        }
+    }
+    if(!exist){
+        routing_table.neighbors.push_back(
+            std::make_pair(dest_ip, (unsigned int)age)
+        );
+    }
+    routing_table.neighbor_mutex.unlock();
+
+    return true;
+}
+
+/**
+ * @brief Link state packet handler.
+ * 
+ * @param buf IPv4 header + Link state packet.
+ * @param len Length of IPv4 packet.
+ * @param device_id Device ID where the packet comes from.
+ * @return true on success, false on failure.
+ */
+bool 
+NetworkLayer::handleLinkState(const u_char *buf, int len, int device_id)
+{
+    // Retrieve link state packet
+    LinkStatePacket *link_state_packet = new LinkStatePacket();
+    unsigned int reversed_seq = *(unsigned int *)buf;
+    link_state_packet->seq = change_order(reversed_seq);
+    unsigned int reversed_age = *(unsigned int *)(buf + 4);
+    link_state_packet->age = change_order(reversed_age);
+    u_short addr_size = *(u_short *)(buf + 8);
+    addr_size = change_order(addr_size);
+    u_short neighbor_size = *(u_short *)(buf + 10);
+    neighbor_size = change_order(neighbor_size);
+    struct in_addr *IP_addrs = (struct in_addr *)(buf + 12);
+    for(int i = 0; i < addr_size; i++){
+        link_state_packet->router_id.push_back(IP_addrs[i]);
+    }
+    struct in_addr *mask = (struct in_addr *)(buf + 12 + 4 * addr_size);
+    for(int i = 0; i < addr_size; i++){
+        link_state_packet->router_id.push_back(mask[i]);
+    }
+    unsigned int *neighbors = (unsigned int *)(buf + 12 + 8 * addr_size);
+    for(int i = 0; i < neighbor_size; i++){
+        struct in_addr id;
+        unsigned int dist;
+        id.s_addr =  change_order(neighbors[2 * i]);
+        dist = change_order(neighbors[2 * i + 1]);
+        link_state_packet->neighbors.push_back(std::make_pair(id, dist));
+    }
+
+    // Update link states
+    bool exist = false;
+    routing_table.link_state_mutex.lock();
+    for(int i = 0; i < routing_table.link_state_list.size(); i++)
+    {   
+        LinkStatePacket *link_state = routing_table.link_state_list[i];
+        if(link_state->router_id[0].s_addr == 
+           link_state_packet->router_id[0].s_addr)
+        {
+            if(link_state->seq <= link_state_packet->seq){
+                routing_table.link_state_list[i] = link_state_packet;
+                delete link_state;
+                for(auto id: routing_table.device_ids){
+                    if(id != device_id){
+                        struct in_addr dest;
+                        dest.s_addr = IPv4_ADDR_BROADCAST;
+                        device_manager.sendFrame(buf, len, ETHTYPE_IPv4, 
+                                                 dest, id);
+                    }
+                }
+            }
+            exist = true;
+            break;
+        }
+    }
+    if(!exist){
+        routing_table.link_state_list.push_back(link_state_packet);
+    }
+    routing_table.link_state_mutex.unlock();
+    return true;
 }

@@ -40,6 +40,8 @@ private:
     void timerCallback(int interval_milliseconds);
     void startTimer(int interval_milliseconds);
     void stopTimer();
+    bool handleHello(const u_char *buf, int len, int device_id);
+    bool handleLinkState(const u_char *buf, int len, int device_id);
 public:
     NetworkLayer();
     ~NetworkLayer() = default;
@@ -48,7 +50,9 @@ public:
     int setIPPacketReceiveCallback(IPPacketReceiveCallback callback);
     int setRoutingTable(const struct in_addr dest, const struct in_addr mask,
                         const void* nextHopMAC, const char* device);
-    unsigned int callBack(const u_char *buf, int len);
+    unsigned int callBack(const u_char *buf, int len, int device_id);
+    bool sendHelloPacket();
+    bool sendLinkStatePacket();
 };
 
 #endif /**< IP_IP_H */

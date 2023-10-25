@@ -31,6 +31,8 @@ public:
     int findDevice(const char* device);
     int sendFrame(const void* buf, int len, int ethtype, 
                   struct in_addr dest_ip, int id);
+    void sendFrameAll(const void* buf, int len, int ethtype, 
+                     struct in_addr dest_ip);
     int setFrameReceiveCallback(frameReceiveCallback callback, int id);
     void setFrameReceiveCallbackAll(frameReceiveCallback callback);
     void listAllDevice();
@@ -39,6 +41,7 @@ public:
     int capLoop(int id, int cnt);
     void readLoop(EpollServer *epoll_server);
     void setIP(struct in_addr addr, const char *device);
+    void requestARP();
 };
 
 #endif /**< ETHERNET_DEVICE_MANAGER_H */

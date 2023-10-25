@@ -117,7 +117,8 @@ EpollServer::waitRead()
             if(!network_layer){
                 continue;
             }
-            rest_len = network_layer->callBack(data + offset, rest_len);
+            rest_len = network_layer->callBack(data + offset, rest_len, 
+                                               it->second->id);
             // Transport layer is remained to implement.
         }
 

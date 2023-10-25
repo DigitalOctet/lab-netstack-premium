@@ -31,12 +31,15 @@
 
 /* Ethernet II type: IPv4. */
 #define ETHTYPE_IPv4 0x0800
-
 /* Ethernet II type: IPv4(reversed version). */
 #define ETHTYPE_IPv4_REVERSED 0x0008
-
 /* Ethernet II type: ARP. */
 #define ETHTYPE_ARP  0x0806
+
+/* Min length of payload */
+#define MIN_PAYLOAD 46
+/* Max length of payload */
+#define MAX_PAYLOAD 1500
 
 /* Ethernet header */
 struct EthernetHeader

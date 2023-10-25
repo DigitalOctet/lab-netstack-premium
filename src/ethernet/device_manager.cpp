@@ -83,7 +83,8 @@ DeviceManager::addDevice(const char* device)
     }
     else{
         name2id[device_name] = next_device_ID;
-        Device* new_device = new Device(device, dev_it->second);
+        Device* new_device = new Device(device, dev_it->second, 
+                                        next_device_ID);
         id2device[next_device_ID] = new_device;
         epoll_server->addRead(new_device->getFD(), new_device);
         return next_device_ID++;
@@ -133,6 +134,24 @@ DeviceManager::sendFrame(const void* buf, int len, int ethtype,
     else{
         std::cerr << "No device " << id << "!" << std::endl;
         return -1;
+    }
+}
+
+/**
+ * @brief Encapsulate some data into an Ethernet II frame and send it.
+ *
+ * @param buf Pointer to the payload.
+ * @param len Length of the payload.
+ * @param ethtype EtherType field value of this frame.
+ * @param dest_ip IP address of the destination.
+ * @see addDevice
+ */
+void 
+DeviceManager::sendFrameAll(const void* buf, int len, int ethtype, 
+                            struct in_addr dest_ip)
+{
+    for(auto &it: id2device){
+        it.second->sendFrame(buf, len, ethtype, dest_ip);
     }
 }
 
@@ -200,7 +219,8 @@ DeviceManager::addAllDevice()
 {
     for(auto &dev: all_dev){
         name2id[dev.first] = next_device_ID;
-        Device* new_device = new Device(dev.first.c_str(), dev.second);
+        Device* new_device = new Device(dev.first.c_str(), dev.second,
+                                        next_device_ID);
         id2device[next_device_ID] = new_device;
         epoll_server->addRead(new_device->getFD(), new_device);
         next_device_ID++;
@@ -283,4 +303,17 @@ DeviceManager::setIP(struct in_addr addr, const char *device_name)
         device->setIP(addr);
     }
     return;
+}
+
+/**
+ * @brief Request ARP for all devices.
+ */
+void 
+DeviceManager::requestARP()
+{
+    for(auto &it: id2device){
+        if(!it.second->request_ARP()){
+            std::cerr << "Device " << it.first << " request ARP error!\n"; 
+        }
+    }
 }
