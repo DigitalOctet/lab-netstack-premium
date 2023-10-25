@@ -10,7 +10,10 @@
 #include "frame.h"
 #include <pcap.h>
 #include <cstring>
+#include <map>
 #include <string>
+
+class NetworkLayer;
 
 /**
  * @brief Class supporting network device management.

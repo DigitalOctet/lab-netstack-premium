@@ -9,10 +9,11 @@
 #ifndef ETHERNET_EPOLL_SERVER_H
 #define ETHERNET_EPOLL_SERVER_H
 
-#include "../ip/ip.h"
 #include "device.h"
 #include <sys/epoll.h>
 #include <map>
+
+class NetworkLayer;
 
 #define MAX_EVENTS 256
 #define TIMEOUT 100

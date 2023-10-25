@@ -4,7 +4,7 @@
 
 #include "endian.h"
 
-inline u_short 
+u_short 
 change_order(u_short src)
 {
     u_short dst;
@@ -15,7 +15,7 @@ change_order(u_short src)
     return dst;
 }
 
-inline unsigned int
+unsigned int
 change_order(unsigned int src)
 {
     unsigned int dst;

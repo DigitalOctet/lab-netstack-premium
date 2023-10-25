@@ -24,8 +24,10 @@ int main()
 
     int len = strlen(payload) + 1;
     for(int i = 0; i < 20; i++){
+        struct in_addr dest_ip;
+        dest_ip.s_addr = 0;
         device_manager.sendFrame(payload, len, ETHTYPE_IPv4, 
-                                 veth2_1_mac, device_id);
+                                 dest_ip, device_id);
     }
 
     return 0;

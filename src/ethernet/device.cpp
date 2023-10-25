@@ -90,12 +90,14 @@ Device::sendFrame(const void* buf, int len,
     u_short correct_ethtype = change_order((u_short)ethtype);
     frame_len = SIZE_ETHERNET + len;
     frame = new u_char[frame_len];
+    arp_mutex.lock();
     if(!check_MAC()){
         std::cerr << "Send frame failed: destination MAC unavailable!\n";
         delete[] frame;
         return -1;
     }
     memcpy(frame, dst_MAC_addr, ETHER_ADDR_LEN);
+    arp_mutex.unlock();
     memcpy(frame + ETHER_ADDR_LEN, mac_addr, ETHER_ADDR_LEN);
     memcpy(frame + 2 * ETHER_ADDR_LEN, &correct_ethtype, ETHER_TYPE_LEN);
     memcpy(frame + SIZE_ETHERNET, buf, len);
@@ -129,6 +131,13 @@ Device::setFrameReceiveCallback(frameReceiveCallback callback)
 int 
 Device::capNext()
 {
+    char errbuf[PCAP_ERRBUF_SIZE] = "";
+    int ret;
+    ret = pcap_setnonblock(handle, 0, errbuf);
+    if(ret == -1){
+        std::cerr << "Set non-block error: " << errbuf << std::endl;
+        return -1;
+    }
     struct pcap_pkthdr header;	/* The header that pcap gives us */
     const u_char *frame = pcap_next(handle, &header);
     if(frame == NULL){
@@ -214,7 +223,7 @@ Device::capNextEx(struct pcap_pkthdr **header, const u_char **data)
  * @brief Get file descriptor corresponding to the device if it is available.
  * @return FD on success, -1 on error.
  */
-inline int 
+int 
 Device::getFD()
 {
     if(fd == -1){
@@ -339,18 +348,22 @@ Device::handle_ARP(const u_char *buf)
     }
 
     // Handle a request or reply.
+    bool ret;
+    arp_mutex.lock();
     if(IS_ARP_REQUEST(arp->opcode)){
         memcpy(dst_MAC_addr, arp->sender_MAC_addr, ETHER_ADDR_LEN);
-        return reply_ARP(mac_addr, arp->target_IP_addr, 
-                         arp->sender_MAC_addr, arp->sender_IP_addr);
+        ret = reply_ARP(mac_addr, arp->target_IP_addr, 
+                        arp->sender_MAC_addr, arp->sender_IP_addr);
     }
     else if(IS_ARP_REPLY(arp->opcode)){
         if(!check_MAC(arp->target_MAC_addr)){
-            return false;
+            ret = false;
         }
         memcpy(dst_MAC_addr, arp->sender_MAC_addr, ETHER_ADDR_LEN);
-        return true;
+        ret = true;
     }
+    arp_mutex.unlock();
+    return ret;
 }
 
 /**

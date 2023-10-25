@@ -7,7 +7,6 @@
 #ifndef IP_IP_H
 #define IP_IP_H
 
-#include "../ethernet/device_manager.h"
 #include "routing_table.h"
 #include <netinet/ip.h>
 #include <chrono>
@@ -23,6 +22,8 @@
  * @see addDevice
  */
 typedef int (* IPPacketReceiveCallback)(const void* buf , int len);
+
+class DeviceManager;
 
 /**
  * @brief Class supporting sending/receiving IPv4 packets encapsulated

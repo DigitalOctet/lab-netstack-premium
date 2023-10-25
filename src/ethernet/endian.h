@@ -19,7 +19,7 @@
  * @param src Source number which possibly need reversing.
  * @return Unsigned short in the correct order.
  */
-inline u_short change_order(u_short src);
+u_short change_order(u_short src);
 
 /**
  * @brief Changes the byte order of an unsigned int.
@@ -27,6 +27,6 @@ inline u_short change_order(u_short src);
  * @param src Source number which possibly need reversing.
  * @return Unsigned int in the correct order.
  */
-inline unsigned int change_order(unsigned int src);
+unsigned int change_order(unsigned int src);
 
 #endif /**< ETHERNET_ENDIAN */

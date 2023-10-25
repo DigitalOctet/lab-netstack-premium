@@ -9,6 +9,7 @@
 #include "frame.h"
 #include <pcap.h>
 #include <map>
+#include <mutex>
 
 /**
  * @brief Process a frame upon receiving it. 
@@ -43,6 +44,7 @@ private:
     int fd;
     struct in_addr ip_addr;
     u_char mac_addr[ETHER_ADDR_LEN];
+    std::mutex arp_mutex;
     u_char dst_MAC_addr[ETHER_ADDR_LEN];
     inline bool is_valid_length(int len);
     inline bool check_MAC(u_char MAC[ETHER_ADDR_LEN]);
@@ -64,7 +66,7 @@ public:
     int capNext();
     int capLoop(int cnt);
     int capNextEx(struct pcap_pkthdr **header, const u_char **data);
-    inline int getFD();
+    int getFD();
     unsigned int callBack(const u_char *buf, int len);
     void setIP(struct in_addr addr);
     bool request_ARP();

@@ -20,7 +20,7 @@ NetworkLayer::NetworkLayer():
         std::cerr << "Device manager construction failed in network layer!\n";
         return;
     }
-    std::thread(DeviceManager::readLoop, device_manager.epoll_server).detach();
+    std::thread(&DeviceManager::readLoop, &device_manager,device_manager.epoll_server).detach();
 }
 
 /**
@@ -283,10 +283,6 @@ NetworkLayer::callBack(const u_char *buf, int len, int device_id)
 void 
 NetworkLayer::timerCallback(int interval_milliseconds)
 {
-    std::this_thread::sleep_for(
-        std::chrono::milliseconds(interval_milliseconds)
-    );
-    device_manager.requestARP();
     while(true){
         timer_mutex.lock();
         if(!timer_running){
@@ -297,11 +293,19 @@ NetworkLayer::timerCallback(int interval_milliseconds)
         std::this_thread::sleep_for(
             std::chrono::milliseconds(interval_milliseconds)
         );
+        device_manager.requestARP();
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(interval_milliseconds)
+        );
         sendHelloPacket();
         std::this_thread::sleep_for(
             std::chrono::milliseconds(interval_milliseconds)
         );
         sendLinkStatePacket();
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(interval_milliseconds)
+        );
+        routing_table.updateStates();
     }
 }
 
@@ -362,6 +366,7 @@ NetworkLayer::sendHelloPacket()
                      IPv4_PROTOCOL_TESTING1, packet, min_len);
         delete[] packet;
     }
+    return true;
 }
 
 /**
@@ -417,6 +422,7 @@ NetworkLayer::sendLinkStatePacket()
                      IPv4_PROTOCOL_TESTING2, packet, len);
         delete[] packet;
     }
+    return true;
 }
 
 /**

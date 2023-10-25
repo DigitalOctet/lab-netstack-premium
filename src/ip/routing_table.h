@@ -22,6 +22,7 @@ typedef struct{
     int device_id;
 }Entry;
 
+class DeviceManager;
 
 /**
  * @brief My routing table class.

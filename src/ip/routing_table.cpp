@@ -88,6 +88,7 @@ RoutingTable::setMyIP()
     }
 
     freeifaddrs(ifap);
+    return 0;
 }
 
 /**

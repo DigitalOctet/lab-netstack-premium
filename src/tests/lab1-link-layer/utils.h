@@ -64,17 +64,20 @@ test_callback(const void *buf, int len)
     EthernetHeader eth_header = *(EthernetHeader *)frame;
     eth_header.ether_type = change_order(eth_header.ether_type);
     const char *payload = (const char *)(frame + SIZE_ETHERNET);
+    
     printf("Source: %02x:%02x:%02x:%02x:%02x:%02x,\t"
            "Destination: %02x:%02x:%02x:%02x:%02x:%02x\n"
-           "EHTER TYPE: 0x%04x\n\n"
-           "Payload(length = %d):\n%.*s\n\n", 
+           "EHTER TYPE: 0x%04x\n\n",
            eth_header.ether_shost[0], eth_header.ether_shost[1], 
            eth_header.ether_shost[2], eth_header.ether_shost[3], 
            eth_header.ether_shost[4], eth_header.ether_shost[5], 
            eth_header.ether_dhost[0], eth_header.ether_dhost[1], 
            eth_header.ether_dhost[2], eth_header.ether_dhost[3], 
-           eth_header.ether_dhost[4], eth_header.ether_dhost[5], 
-           eth_header.ether_type, 
-           len - SIZE_ETHERNET, len - SIZE_ETHERNET, payload);
+           eth_header.ether_dhost[4], eth_header.ether_dhost[5],
+           eth_header.ether_type);
+    if(eth_header.ether_type == ETHTYPE_IPv4){
+        printf("Payload(length = %d):\n%.*s\n\n", 
+               len - SIZE_ETHERNET, len - SIZE_ETHERNET, payload);
+    }
     return 0;
 }
