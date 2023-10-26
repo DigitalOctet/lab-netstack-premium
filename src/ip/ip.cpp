@@ -184,7 +184,7 @@ NetworkLayer::setRoutingTable(const struct in_addr dest,
  * @see RFC791 & RFC790 & RFC3692 and 
  * https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
  */
-unsigned int 
+int 
 NetworkLayer::callBack(const u_char *buf, int len, int device_id)
 {
     int rest_len = len;
@@ -539,6 +539,13 @@ NetworkLayer::handleLinkState(const u_char *buf, int len, int device_id)
         id.s_addr =  neighbors[2 * i];
         dist = neighbors[2 * i + 1];
         link_state_packet->neighbors.push_back(std::make_pair(id, dist));
+    }
+
+    // If the packet is from itself
+    if(routing_table.my_IP_addrs[0].s_addr == 
+       link_state_packet->router_id[0].s_addr)
+    {
+        return true;
     }
 
     // Update link states

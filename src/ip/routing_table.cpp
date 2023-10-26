@@ -287,4 +287,14 @@ RoutingTable::shortest_path()
         }
     }
     table_mutex.unlock();
+
+    bool print = true;
+    if(print){
+        for(int i = 0; i < n; i++){
+            for(int j = 0; j < n; j++){
+                printf("%4d  ", dist[i][j]);
+            }
+            printf("%4d\n", state[i].length);
+        }
+    }
 }

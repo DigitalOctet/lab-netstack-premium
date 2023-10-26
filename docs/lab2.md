@@ -126,6 +126,89 @@ IPv4 addresses and netmasks:
 
 (2) After we disconnect ns2 from the network, ns1 cannot discover ns4. After a while, ns1 can't connect to any other host.
 
-![image-20231026161651516](/home/fhy/.config/Typora/typora-user-images/image-20231026161651516.png)
+![image-20231026161651516](../checkpoints/lab2-network-layer/disconnect.png)
 
-(3) after we connect ns2 to the network again, ns1 can discover ns4
+(3) After we connect ns2 to the network again, ns1 can discover ns4. After the ns1 updates its routing table several times, it discovers ns4.
+
+![Reconnect](../checkpoints/lab2-network-layer/reconnect.png)
+
+
+
+## Checkpoint 5 (CP5)
+
+In my implementation, I set the distance of two hosts who are directly connected to 1.
+
+Because the index of the array depends on the time when link state packets arrives, I use a distance array to show the hosts' names. Index 0 is always the source host. The last column shows the distances to the destinations. 1024 is the maximum length in my implementation. The pictures listed are results printed from ns1 to ns6.
+
+<div align="center">
+ <img src="../checkpoints/lab2-network-layer/distance1.png" width = "30%" >
+ <img src="../checkpoints/lab2-network-layer/distance2.png" width = "30%" >
+ <img src="../checkpoints/lab2-network-layer/distance3.png" width = "30%" >
+</div>
+
+<div align="center">
+ <img src="../checkpoints/lab2-network-layer/distance4.png" width = "30%" >
+ <img src="../checkpoints/lab2-network-layer/distance5.png" width = "30%" >
+ <img src="../checkpoints/lab2-network-layer/distance6.png" width = "30%" >
+</div>
+
+To make it clearer, the distances between each pair of hosts are showed below.
+
+```
++---+---+---+---+---+---+---+
+| \ |ns1|ns2|ns3|ns4|ns5|ns6|
++---+---+---+---+---+---+---+
+|ns1| 0 | 1 | 2 | 3 | 2 | 3 |
++---+---+---+---+---+---+---+
+|ns2| 1 | 0 | 1 | 2 | 1 | 2 |
++---+---+---+---+---+---+---+
+|ns3| 2 | 1 | 0 | 1 | 2 | 1 |
++---+---+---+---+---+---+---+
+|ns4| 3 | 2 | 1 | 0 | 3 | 2 |
++---+---+---+---+---+---+---+
+|ns5| 2 | 1 | 2 | 3 | 0 | 1 |
++---+---+---+---+---+---+---+
+|ns6| 3 | 1 | 1 | 2 | 1 | 0 |
++---+---+---+---+---+---+---+
+```
+
+**Disconnect ns5**
+
+<div align="center">
+ <img src="../checkpoints/lab2-network-layer/dis1.png" width = "30%" >
+ <img src="../checkpoints/lab2-network-layer/dis2.png" width = "30%" >
+ <img src="../checkpoints/lab2-network-layer/dis3.png" width = "30%" >
+</div>
+
+<div align="center">
+ <img src="../checkpoints/lab2-network-layer/dis4.png" width = "30%" >
+ <img src="../checkpoints/lab2-network-layer/dis6.png" width = "30%" >
+</div>
+
+To make it clearer, the distances between each pair of hosts are showed below.
+
+```
++---+---+---+---+---+---+
+| \ |ns1|ns2|ns3|ns4|ns6|
++---+---+---+---+---+---+
+|ns1| 0 | 1 | 2 | 3 | 3 |
++---+---+---+---+---+---+
+|ns2| 1 | 0 | 1 | 2 | 2 |
++---+---+---+---+---+---+
+|ns3| 2 | 1 | 0 | 1 | 1 |
++---+---+---+---+---+---+
+|ns4| 3 | 2 | 1 | 0 | 2 |
++---+---+---+---+---+---+
+|ns6| 3 | 2 | 1 | 2 | 0 |
++---+---+---+---+---+---+
+```
+
+
+
+
+
+## Checkpoint 6 (CP6)
+
+![Reconnect](../checkpoints/lab2-network-layer/find_entry.png)
+
+When a router wants to find an entry, it iterate over it routing table and find the longest prefix that matches the destination address.

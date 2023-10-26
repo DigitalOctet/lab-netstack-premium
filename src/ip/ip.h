@@ -51,7 +51,7 @@ public:
     int setIPPacketReceiveCallback(IPPacketReceiveCallback callback);
     int setRoutingTable(const struct in_addr dest, const struct in_addr mask,
                         const void* nextHopMAC, const char* device);
-    unsigned int callBack(const u_char *buf, int len, int device_id);
+    int callBack(const u_char *buf, int len, int device_id);
     bool sendHelloPacket();
     bool sendLinkStatePacket();
 };
