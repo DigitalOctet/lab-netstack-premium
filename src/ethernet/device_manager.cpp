@@ -107,7 +107,7 @@ DeviceManager::findDevice(const char* device)
         return it->second;
     }
     else{
-        std::cerr << "Device" << device << "not found!" << std::endl;
+        std::cerr << "Device " << device << " not found!" << std::endl;
         return -1;
     }
 }
@@ -301,6 +301,12 @@ DeviceManager::setIP(struct in_addr addr, const char *device_name)
     if(device_id != -1){
         Device *device = id2device[device_id];
         device->setIP(addr);
+    }
+    else{
+        std::cerr << "(DeviceManager::setIP) Find device error!" << std::endl;
+        for(auto &i: name2id){
+            std::cerr << i.first << " " << i.second << std::endl;
+        }
     }
     return;
 }

@@ -20,7 +20,19 @@ NetworkLayer::NetworkLayer():
         std::cerr << "Device manager construction failed in network layer!\n";
         return;
     }
-    std::thread(&DeviceManager::readLoop, &device_manager,device_manager.epoll_server).detach();
+    routing_table.setMyIP();
+    std::thread(&DeviceManager::readLoop, 
+                &device_manager,device_manager.epoll_server).detach();
+    startTimer(2500);
+}
+
+/**
+ * @brief Destructor
+ */
+NetworkLayer::~NetworkLayer()
+{
+    std::cout << "Network layer destruction." << std::endl;
+    stopTimer();
 }
 
 /**
@@ -55,7 +67,8 @@ NetworkLayer::sendIPPacket(const struct in_addr src, const struct in_addr dest,
     // Type of Service
     ipv4_header->service_type = DEFAULT_TOS;
     // Total Length
-    ipv4_header->total_len = SIZE_IPv4 + len;
+    u_short total_len = SIZE_IPv4 + len;
+    ipv4_header->total_len = change_order(total_len);
     // Identification
     ipv4_header->id = DEFAULT_ID;
     // Reserved bit, flags and Fragment Offset
@@ -70,14 +83,15 @@ NetworkLayer::sendIPPacket(const struct in_addr src, const struct in_addr dest,
     ipv4_header->src_addr = src;
     ipv4_header->dst_addr = dest;
     // Calculate checksum
-    ipv4_header->checksum = calculate_checksum((const u_short *)ipv4_header, 
-                                               SIZE_IPv4 >> 1);
+    u_short checksum = calculate_checksum((const u_short *)ipv4_header, 
+                                           SIZE_IPv4 >> 1);
+    ipv4_header->checksum = change_order(checksum);
     
     // Send packets
     if(proto == IPv4_PROTOCOL_TESTING1 || proto == IPv4_PROTOCOL_TESTING2){
         // Broadcast
         device_manager.sendFrameAll(
-            (const void *)packet, ipv4_header->total_len, ETHTYPE_IPv4, dest
+            (const void *)packet, total_len, ETHTYPE_IPv4, dest
         );
     }
     else{
@@ -91,7 +105,7 @@ NetworkLayer::sendIPPacket(const struct in_addr src, const struct in_addr dest,
         }
         if(
             device_manager.sendFrame(
-                (const void *)packet, ipv4_header->total_len,
+                (const void *)packet, total_len,
                 ETHTYPE_IPv4, ipv4_header->dst_addr, device_id
             ) == -1
         ){
@@ -253,14 +267,14 @@ NetworkLayer::callBack(const u_char *buf, int len, int device_id)
         break;
 
     case IPv4_PROTOCOL_TESTING1:
-        if(!handleHello(buf, rest_len, device_id)){
+        if(!handleHello(buf, len, device_id)){
             return -1;
         }
         rest_len = 0;
         break;
 
     case IPv4_PROTOCOL_TESTING2:
-        if(!handleLinkState(buf, rest_len, device_id)){
+        if(!handleLinkState(buf , len, device_id)){
             return -1;
         }
         rest_len = 0;
@@ -383,7 +397,7 @@ NetworkLayer::sendLinkStatePacket()
         u_char *packet;
         int min_len = MIN_PAYLOAD - SIZE_IPv4;
         int max_len = MAX_PAYLOAD - SIZE_IPv4;
-        int len = 8; // seq and age
+        int len = 12; // seq, age, and size
         int neighbor_size = routing_table.neighbors.size();
         len += ((addr_size + neighbor_size) << 3);
         len = (len < min_len) ? min_len : len;
@@ -412,7 +426,7 @@ NetworkLayer::sendLinkStatePacket()
             offset += 4;
         }
         for(auto &neighbor: routing_table.neighbors){
-            memcpy(packet + offset, &neighbor.first, 4);
+            memcpy(packet + offset, &neighbor.first.s_addr, 4);
             offset += 4;
             unsigned int reversed_dist = change_order(1u);
             memcpy(packet + offset, &reversed_dist, 4);
@@ -451,6 +465,7 @@ NetworkLayer::handleHello(const u_char *buf, int len, int device_id)
                                      dest_ip, device_id) == -1
         ){
             delete[] packet;
+            std::cout << "(NetworkLayer::handleHello) send frame error!\n";
             return false;
         }
     }
@@ -491,29 +506,38 @@ bool
 NetworkLayer::handleLinkState(const u_char *buf, int len, int device_id)
 {
     // Retrieve link state packet
-    LinkStatePacket *link_state_packet = new LinkStatePacket();
-    unsigned int reversed_seq = *(unsigned int *)buf;
+    const u_char *buffer = buf + SIZE_IPv4;
+    LinkStatePacket *link_state_packet = new LinkStatePacket;
+    unsigned int reversed_seq = *(unsigned int *)buffer;
     link_state_packet->seq = change_order(reversed_seq);
-    unsigned int reversed_age = *(unsigned int *)(buf + 4);
+    buffer += 4;
+    unsigned int reversed_age = *(unsigned int *)buffer;
     link_state_packet->age = change_order(reversed_age);
-    u_short addr_size = *(u_short *)(buf + 8);
+    buffer += 4;
+    u_short addr_size = *(u_short *)buffer;
     addr_size = change_order(addr_size);
-    u_short neighbor_size = *(u_short *)(buf + 10);
+    buffer += 2;
+    u_short neighbor_size = *(u_short *)buffer;
     neighbor_size = change_order(neighbor_size);
-    struct in_addr *IP_addrs = (struct in_addr *)(buf + 12);
+    struct in_addr IP_addr;
+    buffer += 2;
     for(int i = 0; i < addr_size; i++){
-        link_state_packet->router_id.push_back(IP_addrs[i]);
+        memcpy(&IP_addr, buffer + 4 * i, 4);
+        link_state_packet->router_id.push_back(IP_addr);
     }
-    struct in_addr *mask = (struct in_addr *)(buf + 12 + 4 * addr_size);
+    buffer += 4 * addr_size;
+    struct in_addr mask;
     for(int i = 0; i < addr_size; i++){
-        link_state_packet->router_id.push_back(mask[i]);
+        memcpy(&mask, buffer + 4 * i, 4);
+        link_state_packet->mask.push_back(mask);
     }
-    unsigned int *neighbors = (unsigned int *)(buf + 12 + 8 * addr_size);
+    buffer += 4 * addr_size;
+    unsigned int *neighbors = (unsigned int *)buffer;
     for(int i = 0; i < neighbor_size; i++){
         struct in_addr id;
         unsigned int dist;
-        id.s_addr =  change_order(neighbors[2 * i]);
-        dist = change_order(neighbors[2 * i + 1]);
+        id.s_addr =  neighbors[2 * i];
+        dist = neighbors[2 * i + 1];
         link_state_packet->neighbors.push_back(std::make_pair(id, dist));
     }
 

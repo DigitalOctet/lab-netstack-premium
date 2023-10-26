@@ -114,6 +114,9 @@ EpollServer::waitRead()
             if(rest_len == 0){
                 continue;
             }
+            else if(rest_len == -1){
+                continue;
+            }
             offset = total_len - rest_len;
             if(!network_layer){
                 continue;

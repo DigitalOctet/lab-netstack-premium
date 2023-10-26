@@ -79,5 +79,8 @@ test_callback(const void *buf, int len)
         printf("Payload(length = %d):\n%.*s\n\n", 
                len - SIZE_ETHERNET, len - SIZE_ETHERNET, payload);
     }
+    else{
+        printf("Payload(length = %d)\n\n", len - SIZE_ETHERNET);
+    }
     return 0;
 }

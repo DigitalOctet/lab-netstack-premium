@@ -33,11 +33,33 @@ add_executable(receive_frame tests/lab1-link-layer/receive_frame.cpp
 target_link_libraries(receive_frame PUBLIC pcap)
 
 add_executable(epoll_test tests/lab1-link-layer/epoll_test.cpp 
-                        ethernet/endian.cpp
-                        ethernet/device_manager.cpp
-                        ethernet/device.cpp
-                        ethernet/epoll_server.cpp
-                        ip/ip.cpp
-                        ip/packet.cpp
-                        ip/routing_table.cpp)
-                        target_link_libraries(epoll_test PUBLIC pcap)
+                          ethernet/endian.cpp
+                          ethernet/device_manager.cpp
+                          ethernet/device.cpp
+                          ethernet/epoll_server.cpp
+                          ip/ip.cpp
+                          ip/packet.cpp
+                          ip/routing_table.cpp)
+target_link_libraries(epoll_test PUBLIC pcap)
+
+
+
+add_executable(packet tests/lab2-network-layer/packet.cpp 
+                          ethernet/endian.cpp
+                          ethernet/device_manager.cpp
+                          ethernet/device.cpp
+                          ethernet/epoll_server.cpp
+                          ip/ip.cpp
+                          ip/packet.cpp
+                          ip/routing_table.cpp)
+target_link_libraries(packet PUBLIC pcap)
+
+add_executable(arp tests/lab2-network-layer/packet.cpp 
+                          ethernet/endian.cpp
+                          ethernet/device_manager.cpp
+                          ethernet/device.cpp
+                          ethernet/epoll_server.cpp
+                          ip/ip.cpp
+                          ip/packet.cpp
+                          ip/routing_table.cpp)
+target_link_libraries(arp PUBLIC pcap)

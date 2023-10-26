@@ -85,19 +85,18 @@ Device::sendFrame(const void* buf, int len,
     int frame_len;
     u_char *frame;
     if(!is_valid_length(len)){
-        std::cerr << "Data length invalid!" << std::endl;
+        std::cerr << "Data length invalid: " << len << " !" << std::endl;
+        return -1;
     }
     u_short correct_ethtype = change_order((u_short)ethtype);
     frame_len = SIZE_ETHERNET + len;
     frame = new u_char[frame_len];
-    arp_mutex.lock();
     if(!check_MAC()){
         std::cerr << "Send frame failed: destination MAC unavailable!\n";
         delete[] frame;
         return -1;
     }
     memcpy(frame, dst_MAC_addr, ETHER_ADDR_LEN);
-    arp_mutex.unlock();
     memcpy(frame + ETHER_ADDR_LEN, mac_addr, ETHER_ADDR_LEN);
     memcpy(frame + 2 * ETHER_ADDR_LEN, &correct_ethtype, ETHER_TYPE_LEN);
     memcpy(frame + SIZE_ETHERNET, buf, len);
@@ -209,7 +208,6 @@ Device::capNextEx(struct pcap_pkthdr **header, const u_char **data)
     }
 
     frame_id++;
-    std::cout << "Frame " << frame_id << " captured." << std::endl;
 
     int offset = 0;
     if(callback){
@@ -242,7 +240,7 @@ Device::getFD()
  * passed to network layer. 0 if the frame doesn't need to be passed.
  * -1 on error.
  */
-unsigned int 
+int 
 Device::callBack(const u_char *buf, int len)
 {
     int rest_len = len;
@@ -259,8 +257,9 @@ Device::callBack(const u_char *buf, int len)
 
     case ETHTYPE_ARP:
         rest_len = 0;
-        if(len != SIZE_ETHERNET + SIZE_ARP){
-            std::cout << "An invalid ARP packet received!" << std::endl;
+        if(len != SIZE_ETHERNET + MIN_PAYLOAD){
+            std::cout << "Length error: an invalid ARP packet received!\n";
+            return -1;
         }
         if(!check_MAC(eth_header->ether_dhost)){
             return -1;
@@ -271,7 +270,8 @@ Device::callBack(const u_char *buf, int len)
         break;
     
     default:
-        std::cerr << "No such type: " << eth_header->ether_type << std::endl; 
+        printf("Ethernet type %04x is not implemented!\n", 
+               eth_header->ether_type);
         rest_len = -1;
         break;
     }
@@ -290,6 +290,16 @@ Device::callBack(const u_char *buf, int len)
 inline bool 
 Device::check_MAC(u_char MAC[ETHER_ADDR_LEN])
 {
+    bool is_broadcast = true;
+    for(int i = 0; i < ETHER_ADDR_LEN; i++){
+        if(MAC[i] == 0xff){
+            is_broadcast = false;
+            break;
+        }
+    }
+    if(is_broadcast){
+        return true;
+    }
     for(int i = 0; i < ETHER_ADDR_LEN; i++){
         if(mac_addr[i] != MAC[i]){
             return false;
@@ -352,8 +362,9 @@ Device::handle_ARP(const u_char *buf)
     arp_mutex.lock();
     if(IS_ARP_REQUEST(arp->opcode)){
         memcpy(dst_MAC_addr, arp->sender_MAC_addr, ETHER_ADDR_LEN);
-        ret = reply_ARP(mac_addr, arp->target_IP_addr, 
-                        arp->sender_MAC_addr, arp->sender_IP_addr);
+        ret = reply_ARP(mac_addr, *(struct in_addr *)arp->target_IP_addr, 
+                        arp->sender_MAC_addr, 
+                        *(struct in_addr *)arp->sender_IP_addr);
     }
     else if(IS_ARP_REPLY(arp->opcode)){
         if(!check_MAC(arp->target_MAC_addr)){
@@ -383,18 +394,20 @@ Device::reply_ARP(
     const struct in_addr target_IP
 )
 {
-    struct ARPPacket *arp = new struct ARPPacket;
+    u_char *buf = new u_char[MIN_PAYLOAD];
+    memset(buf, 0, MIN_PAYLOAD);
+    struct ARPPacket *arp = (struct ARPPacket *)buf;
     arp->hardware_type = HARDWARE_TYPE_REVERSED;
     arp->protocol_type = ETHTYPE_IPv4_REVERSED;
     arp->hardware_size = HARDWARE_SIZE;
     arp->protocol_size = PROTOCOL_SIZE;
     arp->opcode = ARP_REPLY_REVERSED;
     memcpy(arp->sender_MAC_addr, sender_MAC, ETHER_ADDR_LEN);
-    arp->sender_IP_addr = sender_IP;
+    memcpy(arp->sender_IP_addr, &sender_IP, IPv4_ADDR_LEN);
     memcpy(arp->target_MAC_addr, target_MAC, ETHER_ADDR_LEN);
-    arp->target_IP_addr = target_IP;
-    int ret = sendFrame(arp, SIZE_ARP, ETHTYPE_ARP, target_IP);
-    delete arp;
+    memcpy(arp->target_IP_addr, &target_IP, IPv4_ADDR_LEN);
+    int ret = sendFrame(arp, MIN_PAYLOAD, ETHTYPE_ARP, target_IP);
+    delete[] buf;
     return ret == 0 ? true : false;
 }
 
@@ -413,18 +426,22 @@ Device::request_ARP(
     }
     struct in_addr target_IP;
     target_IP.s_addr = IPv4_ADDR_BROADCAST;
-    struct ARPPacket *arp = new struct ARPPacket;
+    u_char *buf = new u_char[MIN_PAYLOAD];
+    memset(buf, 0, MIN_PAYLOAD);
+    struct ARPPacket *arp = (struct ARPPacket *)buf;
     arp->hardware_type = HARDWARE_TYPE_REVERSED;
     arp->protocol_type = ETHTYPE_IPv4_REVERSED;
     arp->hardware_size = HARDWARE_SIZE;
     arp->protocol_size = PROTOCOL_SIZE;
     arp->opcode = ARP_REQUEST_REVERSED;
     memcpy(arp->sender_MAC_addr, mac_addr, ETHER_ADDR_LEN);
-    arp->sender_IP_addr = ip_addr;
+    memcpy(arp->sender_IP_addr, &ip_addr, IPv4_ADDR_LEN);
     memcpy(arp->target_MAC_addr, target_MAC, ETHER_ADDR_LEN);
-    arp->target_IP_addr = target_IP;
-    int ret = sendFrame(arp, SIZE_ARP, ETHTYPE_ARP, target_IP);
-    delete arp;
+    memcpy(arp->target_IP_addr, &target_IP, IPv4_ADDR_LEN);
+    arp_mutex.lock();
+    int ret = sendFrame(buf, MIN_PAYLOAD, ETHTYPE_ARP, target_IP);
+    arp_mutex.unlock();
+    delete[] buf;
     return ret == 0 ? true : false;
 }
 

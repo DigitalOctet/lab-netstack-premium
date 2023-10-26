@@ -67,7 +67,7 @@ public:
     int capLoop(int cnt);
     int capNextEx(struct pcap_pkthdr **header, const u_char **data);
     int getFD();
-    unsigned int callBack(const u_char *buf, int len);
+    int callBack(const u_char *buf, int len);
     void setIP(struct in_addr addr);
     bool request_ARP();
 };

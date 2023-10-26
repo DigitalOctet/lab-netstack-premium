@@ -45,7 +45,7 @@ private:
     bool handleLinkState(const u_char *buf, int len, int device_id);
 public:
     NetworkLayer();
-    ~NetworkLayer() = default;
+    ~NetworkLayer();
     int sendIPPacket(const struct in_addr src, const struct in_addr dest,
                      int proto, const void* buf, int len);
     int setIPPacketReceiveCallback(IPPacketReceiveCallback callback);

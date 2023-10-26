@@ -4,15 +4,19 @@
 
 #include "routing_table.h"
 #include <ifaddrs.h>
+#include <sys/socket.h>
+#include <iostream>
+#include <string>
+#include <unordered_map>
 
 /**
  * @brief Default constructor of `RoutingTable`.
  */
 RoutingTable::RoutingTable(DeviceManager *dm): 
     routing_table(), my_IP_addrs(), link_state_list(), neighbors(), 
-    device_manager(dm), seq(0), device_ids()
+    device_manager(dm), seq(0), device_ids(), 
+    table_mutex(), link_state_mutex(), neighbor_mutex()
 {
-    setMyIP();
 }
 
 /**
@@ -127,7 +131,7 @@ RoutingTable::updateStates()
     neighbor_mutex.unlock();
     link_state_mutex.lock();
     for(auto it = link_state_list.begin(); it != link_state_list.end(); ){
-        if((*it)->age == 0){
+        if((*it)->age <= 0){
             it = link_state_list.erase(it);
         }
         else{
@@ -140,6 +144,27 @@ RoutingTable::updateStates()
     neighbor_mutex.lock();
     shortest_path();
     link_state_mutex.unlock();
+    neighbor_mutex.unlock();
+
+    bool print = true;
+    if(print){
+        table_mutex.lock();
+        std::cout << "Updating routing table..." << std::endl;
+        int i = 0;
+        for(auto &entry: routing_table){
+            char ip[INET_ADDRSTRLEN], mask[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &entry.IP_addr, ip, sizeof(ip));
+            inet_ntop(AF_INET, &entry.mask, mask, sizeof(mask));
+            printf("Table entry %d:\n", i);
+            printf("\tIP Address: %s\n", ip);
+            printf("\tSubnet Mask: %s\n", mask);
+            printf("\tDevice ID: %d\n\n", entry.device_id);
+            i++;
+        }
+        table_mutex.unlock();
+    }
+
+    return;
 }
 
 /**
@@ -148,9 +173,45 @@ RoutingTable::updateStates()
 void 
 RoutingTable::shortest_path()
 {
+    int n = link_state_list.size() + 1;
+
     #define MAX_NODES 1024
     int dist[MAX_NODES][MAX_NODES];
-    memset(dist, 0, MAX_NODES * MAX_NODES);
+    memset(dist, 0, 4 * MAX_NODES * MAX_NODES);
+    for(int i = 0; i < MAX_NODES; i++){
+        for(int j = 0; j < MAX_NODES; j++){
+            if(i == j){
+                dist[i][j] = 0;
+            }
+            else{
+                dist[i][j] = MAX_NODES;
+            }
+        }
+    }
+
+    // Add routers of link state packets to hash
+    // If a host is not in the hash table, just leave it.
+    std::unordered_map<unsigned int, int> m;
+    for(int i = 0; i < n - 1; i++){
+        m[link_state_list[i]->router_id[0].s_addr] = i + 1;
+    }
+    m[my_IP_addrs[0].s_addr] = 0;
+    for(auto &neighbor: neighbors){
+        auto it = m.find(neighbor.first.s_addr);
+        if(it != m.end()){
+            dist[0][it->second] = 1;
+        }
+    }
+    for(auto &it: link_state_list){
+        int s = m[it->router_id[0].s_addr];
+        for(auto &t: it->neighbors){
+            auto it = m.find(t.first.s_addr);
+            if(it != m.end()){
+                dist[s][it->second] = 1;
+            }
+        }
+    }
+
     enum l{
         permanent,
         tentative
@@ -161,7 +222,6 @@ RoutingTable::shortest_path()
         l label;
     }state[MAX_NODES];
     int i, k, min;
-    int n = link_state_list.size() + 1;
     struct state *p;
     for(p = &state[0]; p < &state[n]; p++){
         p->predecessor = -1;
@@ -175,13 +235,21 @@ RoutingTable::shortest_path()
         for(i = 0; i < n; i++){
             if(dist[k][i] != 0 && state[i].label == tentative){
                 if(state[k].length + dist[k][i] < state[i].length){
-                    state->predecessor = k;
-                    k = i;
+                    state[i].predecessor = k;
+                    state[i].length = state[k].length + dist[k][i];
                 }
+            }
+        }
+        k = 0; min = MAX_NODES;
+        for(i = 0; i < n; i++){
+            if(state[i].label == tentative && state[i].length < min){
+                min = state[i].length;
+                k = i;
             }
         }
         state[k].label = permanent;
     }
+    table_mutex.lock();
     routing_table.clear();
     for(int j = 1; j < n; j++){
         k = j;
@@ -205,11 +273,10 @@ RoutingTable::shortest_path()
             e.device_id = k;
             e.IP_addr = link_state_list[j - 1]->router_id[i];
             e.mask = link_state_list[j - 1]->mask[i];
-            bool exist =false;
-            for(auto &entry: routing_table){
-                if(entry.IP_addr.s_addr == e.IP_addr.s_addr &&
-                   entry.mask.s_addr == e.mask.s_addr)
-                {
+            e.IP_addr.s_addr = e.IP_addr.s_addr & e.mask.s_addr;
+            bool exist = false;
+            for(auto &en: routing_table){
+                if(en.IP_addr.s_addr == e.IP_addr.s_addr){
                     exist = true;
                     break;
                 }
@@ -219,4 +286,5 @@ RoutingTable::shortest_path()
             }
         }
     }
+    table_mutex.unlock();
 }

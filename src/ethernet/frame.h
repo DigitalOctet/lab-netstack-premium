@@ -8,6 +8,7 @@
  * +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
  * |80 00 20 7A 3F 3E|80 00 20 20 3A AE|08 00|        IP, ARP, etc         |
  * +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+ * +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
  * | Destination MAC |    Source MAC   | Type|          Payload            |
  * +-----------------+-----------------+-----+-----------------------------+
  * |          MAC Header(14 bytes)           |     Data(46-1500 bytes)     |
@@ -75,9 +76,9 @@ struct ARPPacket
 	u_char protocol_size;  // 5
 	u_short opcode;        // 6
 	u_char sender_MAC_addr[ETHER_ADDR_LEN]; // 8
-	struct in_addr sender_IP_addr;   // 14
+	u_char sender_IP_addr[IPv4_ADDR_LEN];   // 14
 	u_char target_MAC_addr[ETHER_ADDR_LEN]; // 18
-	struct in_addr target_IP_addr;  // 24 -- 28
+	u_char target_IP_addr[IPv4_ADDR_LEN];  // 24 -- 28
 };
 
 #endif /**< ETHERNET_FRAME_H */
