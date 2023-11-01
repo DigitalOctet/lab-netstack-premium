@@ -45,6 +45,7 @@ RoutingTable::findEntry(struct in_addr addr)
     int device_id = -1;
     struct in_addr longest_prefix = {0};
     table_mutex.lock();
+    // Find the matching entry while applying the longest prefix matching.
     for(auto &entry: routing_table){
         if(addr.s_addr & entry.mask.s_addr == entry.IP_addr.s_addr){
             if(((~entry.mask.s_addr) & (longest_prefix.s_addr)) == 0){

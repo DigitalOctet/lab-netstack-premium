@@ -146,6 +146,8 @@ Because the index of the array depends on the time when link state packets arriv
  <img src="../checkpoints/lab2-network-layer/distance3.png" width = "30%" >
 </div>
 
+
+
 <div align="center">
  <img src="../checkpoints/lab2-network-layer/distance4.png" width = "30%" >
  <img src="../checkpoints/lab2-network-layer/distance5.png" width = "30%" >
@@ -179,6 +181,8 @@ To make it clearer, the distances between each pair of hosts are showed below.
  <img src="../checkpoints/lab2-network-layer/dis2.png" width = "30%" >
  <img src="../checkpoints/lab2-network-layer/dis3.png" width = "30%" >
 </div>
+
+
 
 <div align="center">
  <img src="../checkpoints/lab2-network-layer/dis4.png" width = "30%" >
