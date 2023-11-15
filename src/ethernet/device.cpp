@@ -2,8 +2,8 @@
  * @file device.cpp
  */
 
-#include "device.h"
-#include "endian.h"
+#include <ethernet/device.h>
+#include <ethernet/endian.h>
 #include <unistd.h>
 #include <net/if.h>
 #include <sys/ioctl.h>

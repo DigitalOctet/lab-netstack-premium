@@ -2,7 +2,7 @@
  * @file endian.cpp
  */
 
-#include "endian.h"
+#include <ethernet/endian.h>
 
 u_short 
 change_order(u_short src)

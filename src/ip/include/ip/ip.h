@@ -4,8 +4,7 @@
  * in an Ethernet II frame.
  */
 
-#ifndef IP_IP_H
-#define IP_IP_H
+#pragma once
 
 #include "routing_table.h"
 #include <netinet/ip.h>
@@ -55,5 +54,3 @@ public:
     bool sendHelloPacket();
     bool sendLinkStatePacket();
 };
-
-#endif /**< IP_IP_H */

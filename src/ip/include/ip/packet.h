@@ -21,8 +21,7 @@
  *                 Example Internet Datagram Header
  */
 
-#ifndef IP_PACKET_H
-#define IP_PACKET_H
+#pragma once
 
 #include <netinet/ip.h>
 #include <sys/types.h>
@@ -122,5 +121,3 @@ public:
     LinkStatePacket() = default;
     ~LinkStatePacket() = default;
 };
-
-#endif /**< IP_PACKET_H */

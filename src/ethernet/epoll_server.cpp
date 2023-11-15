@@ -2,8 +2,8 @@
  * @file epoll_server.cpp
  */
 
-#include "../ip/ip.h"
-#include "epoll_server.h"
+#include <ip/ip.h>
+#include <ethernet/epoll_server.h>
 #include <unistd.h>
 #include <iostream>
 

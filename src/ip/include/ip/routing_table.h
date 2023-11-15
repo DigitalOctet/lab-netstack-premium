@@ -3,11 +3,10 @@
  * @brief Defines routing table class.
  */
 
-#ifndef IP_ROUTING_TABLE_H
-#define IP_ROUTING_TABLE_H
+#pragma once
 
-#include "../ethernet/device_manager.h"
-#include "../ethernet/frame.h"
+#include <ethernet/device_manager.h>
+#include <ethernet/frame.h>
 #include "packet.h"
 #include <netinet/ip.h>
 #include <mutex>
@@ -57,5 +56,3 @@ public:
     bool findMyIP(struct in_addr addr);
     void updateStates();
 };
-
-#endif /**< IP_ROUTING_TABLE_H */

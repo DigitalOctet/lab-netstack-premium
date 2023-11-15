@@ -3,7 +3,7 @@
  * @brief (Checkpoint 1) Show all the network interfaces on the host.
  */
 
-#include "../../ethernet/device_manager.h"
+#include <ethernet/device_manager.h>
 
 int main()
 {

@@ -6,8 +6,7 @@
  * efficient than other motheds like select or poll.
  */
 
-#ifndef ETHERNET_EPOLL_SERVER_H
-#define ETHERNET_EPOLL_SERVER_H
+#pragma once
 
 #include "device.h"
 #include <sys/epoll.h>
@@ -31,5 +30,3 @@ public:
     int addRead(int fd, Device *device);
     int waitRead();
 };
-
-#endif /**< ETHERNET_EPOLL_SERVER_H */

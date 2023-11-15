@@ -8,8 +8,7 @@
  *     2. unsigned int
  */
 
-#ifndef ETHERNET_ENDIAN
-#define ETHERNET_ENDIAN
+#pragma once
 
 #include <sys/types.h>
 
@@ -28,5 +27,3 @@ u_short change_order(u_short src);
  * @return Unsigned int in the correct order.
  */
 unsigned int change_order(unsigned int src);
-
-#endif /**< ETHERNET_ENDIAN */

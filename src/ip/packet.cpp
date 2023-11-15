@@ -2,7 +2,7 @@
  * @file packet.cpp
  */
 
-#include "packet.h"
+#include <ip/packet.h>
 
 u_short 
 calculate_checksum(const u_short *header, int len)

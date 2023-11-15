@@ -3,8 +3,7 @@
  * @brief Class of devices supporting sending/receiving Ethernet II frames.
  */
 
-#ifndef ETHERNET_DEVICE_H
-#define ETHERNET_DEVICE_H
+#pragma once
 
 #include "frame.h"
 #include <pcap.h>
@@ -71,5 +70,3 @@ public:
     void setIP(struct in_addr addr);
     bool request_ARP();
 };
-
-#endif /**< ETHERNET_DEVICE_H */

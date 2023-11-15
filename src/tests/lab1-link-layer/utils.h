@@ -3,8 +3,8 @@
  * @brief Define some macros and variables for tests of lab1.
  */
 
-#include "../../ethernet/endian.h"
-#include "../../ethernet/device_manager.h"
+#include <ethernet/endian.h>
+#include <ethernet/device_manager.h>
 
 /* Source device. */
 #define SRC_DEVICE "veth1-2"

@@ -15,10 +15,9 @@
  * +-----------------------------------------+-----------------------------+
  */
 
-#ifndef ETHERNET_FRAME_H
-#define ETHERNET_FRAME_H
+#pragma once
 
-#include "../ip/packet.h"
+#include <ip/packet.h>
 #include <sys/types.h>
 
 /* Ethernet addresses are 6 bytes */
@@ -80,5 +79,3 @@ struct ARPPacket
 	u_char target_MAC_addr[ETHER_ADDR_LEN]; // 18
 	u_char target_IP_addr[IPv4_ADDR_LEN];  // 24 -- 28
 };
-
-#endif /**< ETHERNET_FRAME_H */

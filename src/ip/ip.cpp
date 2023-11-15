@@ -2,10 +2,10 @@
  * @file ip.cpp
  */
 
-#include "../ethernet/endian.h"
-#include "../ethernet/frame.h"
-#include "ip.h"
-#include "packet.h"
+#include <ethernet/endian.h>
+#include <ethernet/frame.h>
+#include <ip/ip.h>
+#include <ip/packet.h>
 #include <iostream>
 #include <thread>
 

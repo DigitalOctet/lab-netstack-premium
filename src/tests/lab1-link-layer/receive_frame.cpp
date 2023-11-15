@@ -4,7 +4,7 @@
  * are 20 frames sent from veth1-2.
  */
 
-#include "../../ethernet/endian.h"
+#include <ethernet/endian.h>
 #include "utils.h"
 #include <iostream>
 

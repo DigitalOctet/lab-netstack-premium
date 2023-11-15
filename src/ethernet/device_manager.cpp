@@ -2,7 +2,7 @@
  * @file device_manager.cpp
  */
 
-#include "device_manager.h"
+#include <ethernet/device_manager.h>
 #include <linux/if_packet.h>
 #include <iostream>
 

@@ -4,7 +4,7 @@
  * @brief (Checkpoint 3) Generate and capture packets
  */
 
-#include "../../ip/ip.h"
+#include <ip/ip.h>
 
 int main()
 {

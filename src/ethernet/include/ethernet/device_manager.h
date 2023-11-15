@@ -3,8 +3,7 @@
  * @brief Class supporting network device management.
  */
 
-#ifndef ETHERNET_DEVICE_MANAGER_H
-#define ETHERNET_DEVICE_MANAGER_H
+#pragma once
 
 #include "epoll_server.h"
 #include "frame.h"
@@ -46,5 +45,3 @@ public:
     void setIP(struct in_addr addr, const char *device);
     void requestARP();
 };
-
-#endif /**< ETHERNET_DEVICE_MANAGER_H */
