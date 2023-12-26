@@ -72,7 +72,7 @@ struct IPv4Header
     u_short id;
     u_short flags_offset;
     u_char ttl;
-    u_char protocal;
+    u_char protocol;
     u_short checksum;
     struct in_addr src_addr;
     struct in_addr dst_addr;

@@ -13,6 +13,7 @@
 #include <map>
 
 class NetworkLayer;
+class TransportLayer;
 
 #define MAX_EVENTS 256
 #define TIMEOUT 100
@@ -24,6 +25,7 @@ private:
     struct epoll_event events[MAX_EVENTS];
     std::map<int, Device *> fd2device;
     NetworkLayer *network_layer;
+    TransportLayer *transport_layer;
 public:
     EpollServer(NetworkLayer *net);
     ~EpollServer();

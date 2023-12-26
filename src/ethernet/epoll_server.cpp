@@ -2,8 +2,9 @@
  * @file epoll_server.cpp
  */
 
-#include <ip/ip.h>
 #include <ethernet/epoll_server.h>
+#include <ip/ip.h>
+#include <tcp/tcp.h>
 #include <unistd.h>
 #include <iostream>
 
@@ -110,6 +111,7 @@ EpollServer::waitRead()
             unsigned int rest_len = header->caplen;
             unsigned int total_len = rest_len;
             unsigned int offset = 0;
+            // Link layer
             rest_len = it->second->callBack(data, rest_len);
             if(rest_len == 0){
                 continue;
@@ -117,13 +119,28 @@ EpollServer::waitRead()
             else if(rest_len == -1){
                 continue;
             }
+            // Network layer
             offset = total_len - rest_len;
             if(!network_layer){
                 continue;
             }
             rest_len = network_layer->callBack(data + offset, rest_len, 
                                                it->second->id);
-            // Transport layer is remained to implement.
+            if(rest_len == 0){
+                continue;
+            }
+            else if(rest_len == -1){
+                continue;
+            }
+            // Transport layer
+            offset = total_len - rest_len;
+            if(!transport_layer){
+                continue;
+            }
+            IPv4Header *ipv4_header = (IPv4Header *)data;
+            transport_layer->callBack(data + offset, rest_len, 
+                                      ipv4_header->src_addr, 
+                                      ipv4_header->dst_addr);
         }
 
     }

@@ -6,6 +6,7 @@
 #include <ethernet/frame.h>
 #include <ip/ip.h>
 #include <ip/packet.h>
+#include <algorithm>
 #include <iostream>
 #include <thread>
 
@@ -22,7 +23,7 @@ NetworkLayer::NetworkLayer():
     }
     routing_table.setMyIP();
     std::thread(&DeviceManager::readLoop, 
-                &device_manager,device_manager.epoll_server).detach();
+                &device_manager, device_manager.epoll_server).detach();
     startTimer(2500);
 }
 
@@ -76,7 +77,7 @@ NetworkLayer::sendIPPacket(const struct in_addr src, const struct in_addr dest,
     // Time to Live
     ipv4_header->ttl = DEFAULT_TTL;
     // Protocol
-    ipv4_header->protocal = proto;
+    ipv4_header->protocol = proto;
     // Checksum: firstly set to 0
     ipv4_header->checksum = 0;
     // Addresses
@@ -85,7 +86,7 @@ NetworkLayer::sendIPPacket(const struct in_addr src, const struct in_addr dest,
     // Calculate checksum
     u_short checksum = calculate_checksum((const u_short *)ipv4_header, 
                                            SIZE_IPv4 >> 1);
-    ipv4_header->checksum = change_order(checksum);
+    ipv4_header->checksum = checksum;
     
     // Send packets
     if(proto == IPv4_PROTOCOL_TESTING1 || proto == IPv4_PROTOCOL_TESTING2){
@@ -238,7 +239,7 @@ NetworkLayer::callBack(const u_char *buf, int len, int device_id)
     // Protocol
     // See RFC790 & RFC3692 and 
     // https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
-    switch (ipv4_header.protocal)
+    switch (ipv4_header.protocol)
     {
     case IPv4_PROTOCOL_TCP:
         if(!routing_table.findMyIP(ipv4_header.dst_addr)){
@@ -281,7 +282,7 @@ NetworkLayer::callBack(const u_char *buf, int len, int device_id)
         break;
     
     default:
-        std::cerr << "Protocol " << ipv4_header.protocal;
+        std::cerr << "Protocol " << ipv4_header.protocol;
         std::cerr << " is not implemented!" << std::endl;
         rest_len = -1;
         break;
@@ -578,4 +579,27 @@ NetworkLayer::handleLinkState(const u_char *buf, int len, int device_id)
     }
     routing_table.link_state_mutex.unlock();
     return true;
+}
+
+/**
+ * @brief Get the first IP address.
+ */
+struct in_addr 
+NetworkLayer::getIP()
+{
+    return routing_table.my_IP_addrs[0];
+}
+
+/**
+ * @brief Find whether ADDR is one of the host's IP address.
+ */
+bool 
+NetworkLayer::findIP(const struct in_addr addr)
+{
+    for(auto &i: routing_table.my_IP_addrs){
+        if(i.s_addr == addr.s_addr){
+            return true;
+        }
+    }
+    return false;
 }

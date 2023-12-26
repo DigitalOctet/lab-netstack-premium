@@ -20,7 +20,7 @@
  * @return 0 on success, -1 on error.
  * @see addDevice
  */
-typedef int (* IPPacketReceiveCallback)(const void* buf , int len);
+typedef int (* IPPacketReceiveCallback)(const void *buf, int len);
 
 class DeviceManager;
 
@@ -53,4 +53,6 @@ public:
     int callBack(const u_char *buf, int len, int device_id);
     bool sendHelloPacket();
     bool sendLinkStatePacket();
+    struct in_addr getIP();
+    bool findIP(const struct in_addr addr);
 };

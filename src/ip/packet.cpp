@@ -2,6 +2,7 @@
  * @file packet.cpp
  */
 
+#include <ethernet/endian.h>
 #include <ip/packet.h>
 
 u_short 
@@ -18,5 +19,5 @@ calculate_checksum(const u_short *header, int len)
         sum = (sum & 0xffff) + (sum >> 16);
     }
     
-    return ~sum;
+    return change_order((u_short)~sum);
 }
