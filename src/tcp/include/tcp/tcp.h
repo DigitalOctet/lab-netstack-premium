@@ -32,7 +32,8 @@ private:
 
     int default_fd;
     std::map<int, TCB *> fd2tcb;
-    std::mutex map_mutex;
+    std::set<TCB *> tcbs;
+    std::mutex tcb_mutex;
     NetworkLayer *network_layer;
     BitMap bitmap;
 

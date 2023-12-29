@@ -1,5 +1,7 @@
 /**
  * @file bitmap.cpp
+ * 
+ * Adapted from PintOS.
  */
 
 #include "bitmap.h"
@@ -75,7 +77,7 @@ BitMap::~BitMap()
 size_t
 BitMap::bitmap_size()
 {
-  return bit_cnt;
+    return bit_cnt;
 }
 
 /** Setting and testing single bits. */
@@ -97,26 +99,26 @@ BitMap::bitmap_set(size_t idx, bool value)
 void
 BitMap::bitmap_mark(size_t bit_idx) 
 {
-  size_t idx = elem_idx (bit_idx);
-  elem_type mask = bit_mask (bit_idx);
+    size_t idx = elem_idx (bit_idx);
+    elem_type mask = bit_mask (bit_idx);
 
-  /* This is equivalent to `b->bits[idx] |= mask' except that it
-     is guaranteed to be atomic on a uniprocessor machine.  See
-     the description of the OR instruction in [IA32-v2b]. */
-  asm ("orl %1, %0" : "=m" (bits[idx]) : "r" (mask) : "cc");
+    /* This is equivalent to `b->bits[idx] |= mask' except that it
+        is guaranteed to be atomic on a uniprocessor machine.  See
+        the description of the OR instruction in [IA32-v2b]. */
+    asm ("orl %1, %0" : "=m" (bits[idx]) : "r" (mask) : "cc");
 }
 
 /** Atomically sets the bit numbered BIT_IDX in B to false. */
 void
 BitMap::bitmap_reset(size_t bit_idx) 
 {
-  size_t idx = elem_idx(bit_idx);
-  elem_type mask = bit_mask(bit_idx);
+    size_t idx = elem_idx(bit_idx);
+    elem_type mask = bit_mask(bit_idx);
 
-  /* This is equivalent to `b->bits[idx] &= ~mask' except that it
-     is guaranteed to be atomic on a uniprocessor machine.  See
-     the description of the AND instruction in [IA32-v2a]. */
-  asm ("andl %1, %0" : "=m" (bits[idx]) : "r" (~mask) : "cc");
+    /* This is equivalent to `b->bits[idx] &= ~mask' except that it
+        is guaranteed to be atomic on a uniprocessor machine.  See
+        the description of the AND instruction in [IA32-v2a]. */
+    asm ("andl %1, %0" : "=m" (bits[idx]) : "r" (~mask) : "cc");
 }
 
 /** Atomically toggles the bit numbered IDX in B;
@@ -125,24 +127,24 @@ BitMap::bitmap_reset(size_t bit_idx)
 void
 BitMap::bitmap_flip (size_t bit_idx) 
 {
-  size_t idx = elem_idx (bit_idx);
-  elem_type mask = bit_mask (bit_idx);
+    size_t idx = elem_idx (bit_idx);
+    elem_type mask = bit_mask (bit_idx);
 
-  /* This is equivalent to `b->bits[idx] ^= mask' except that it
-     is guaranteed to be atomic on a uniprocessor machine.  See
-     the description of the XOR instruction in [IA32-v2b]. */
-  asm ("xorl %1, %0" : "=m" (bits[idx]) : "r" (mask) : "cc");
+    /* This is equivalent to `b->bits[idx] ^= mask' except that it
+        is guaranteed to be atomic on a uniprocessor machine.  See
+        the description of the XOR instruction in [IA32-v2b]. */
+    asm ("xorl %1, %0" : "=m" (bits[idx]) : "r" (mask) : "cc");
 }
 
 /** Returns the value of the bit numbered IDX in B. */
 bool
 BitMap::bitmap_test(size_t idx) 
 {
-  if (idx < bit_cnt) {
-    fprintf(stderr, "IDX is too big!\n");
-    exit(-1);
-  }
-  return (bits[elem_idx (idx)] & bit_mask (idx)) != 0;
+    if (idx < bit_cnt) {
+        fprintf(stderr, "IDX is too big!\n");
+        exit(-1);
+    }
+    return (bits[elem_idx (idx)] & bit_mask (idx)) != 0;
 }
 
 /** Setting and testing multiple bits. */
@@ -151,7 +153,7 @@ BitMap::bitmap_test(size_t idx)
 void
 BitMap::bitmap_set_all(bool value) 
 {
-  bitmap_set_multiple(0, bitmap_size(), value);
+    bitmap_set_multiple(0, bitmap_size(), value);
 }
 
 /** Sets the CNT bits starting at START in B to VALUE. */
@@ -174,24 +176,24 @@ BitMap::bitmap_set_multiple(size_t start, size_t cnt, bool value)
 bool
 BitMap::bitmap_contains(size_t start, size_t cnt, bool value) 
 {
-  size_t i;
-  
-  if((start > bit_cnt) || (start + cnt > bit_cnt)) {
-    exit(-1);
-  }
+    size_t i;
+    
+    if((start > bit_cnt) || (start + cnt > bit_cnt)) {
+        exit(-1);
+    }
 
-  for (i = 0; i < cnt; i++)
-    if (bitmap_test (start + i) == value)
-      return true;
-  return false;
-}
+    for (i = 0; i < cnt; i++)
+        if (bitmap_test (start + i) == value)
+        return true;
+    return false;
+    }
 
 /** Returns true if any bits in B between START and START + CNT,
    exclusive, are set to true, and false otherwise.*/
 bool
 BitMap::bitmap_any(size_t start, size_t cnt) 
 {
-  return bitmap_contains (start, cnt, true);
+    return bitmap_contains (start, cnt, true);
 }
 
 /** Returns true if no bits in B between START and START + CNT,
@@ -199,7 +201,7 @@ BitMap::bitmap_any(size_t start, size_t cnt)
 bool
 BitMap::bitmap_none (size_t start, size_t cnt) 
 {
-  return !bitmap_contains (start, cnt, true);
+    return !bitmap_contains (start, cnt, true);
 }
 
 /** Returns true if every bit in B between START and START + CNT,
@@ -207,7 +209,7 @@ BitMap::bitmap_none (size_t start, size_t cnt)
 bool
 BitMap::bitmap_all(size_t start, size_t cnt) 
 {
-  return !bitmap_contains(start, cnt, false);
+    return !bitmap_contains(start, cnt, false);
 }
 
 /** Finding set or unset bits. */
@@ -220,19 +222,19 @@ BitMap::bitmap_all(size_t start, size_t cnt)
 size_t
 BitMap::bitmap_scan(size_t start, size_t cnt, bool value) 
 {
-  if (start > bit_cnt) {
-    return BITMAP_ERROR;
-  }
-
-  if (cnt <= bit_cnt) 
-    {
-      size_t last = bit_cnt - cnt;
-      size_t i;
-      for (i = start; i <= last; i++)
-        if (!bitmap_contains (i, cnt, !value))
-          return i; 
+    if (start > bit_cnt) {
+        return BITMAP_ERROR;
     }
-  return BITMAP_ERROR;
+
+    if (cnt <= bit_cnt) 
+        {
+        size_t last = bit_cnt - cnt;
+        size_t i;
+        for (i = start; i <= last; i++)
+            if (!bitmap_contains (i, cnt, !value))
+            return i; 
+        }
+    return BITMAP_ERROR;
 }
 
 /** 
@@ -247,8 +249,53 @@ BitMap::bitmap_scan(size_t start, size_t cnt, bool value)
 size_t
 BitMap::bitmap_scan_and_flip(size_t start, size_t cnt, bool value)
 {
-  size_t idx = bitmap_scan (start, cnt, value);
-  if (idx != BITMAP_ERROR)
-    bitmap_set_multiple (idx, cnt, !value);
-  return idx;
+    size_t idx = bitmap_scan (start, cnt, value);
+    if (idx != BITMAP_ERROR)
+        bitmap_set_multiple (idx, cnt, !value);
+    return idx;
+}
+
+/**
+ * @brief add an additional port
+ */
+void
+BitMap::bitmap_add(size_t bit_idx) 
+{
+    size_t idx = elem_idx (bit_idx);
+    elem_type mask = bit_mask (bit_idx);
+    mutex.lock();
+    auto it = map.find(idx);
+    if(it != map.end()){
+        it->second++;
+    }
+    else{
+        map[idx] = 1;
+    }
+    mutex.unlock();
+    return;
+}
+
+/**
+ * @brief Delete an additional port. If it's the last one, reset bitmap.
+ */
+void
+BitMap::bitmap_delete(size_t bit_idx) 
+{
+    size_t idx = elem_idx(bit_idx);
+    elem_type mask = bit_mask(bit_idx);
+    bool reset = false;
+    mutex.lock();
+    auto it = map.find(idx);
+    if(it != map.end()){
+        it->second--;
+        if(it->second == -1){
+            reset = true;
+        }
+    }
+    else{
+        reset = true;
+    }
+
+    if(reset)
+        asm ("andl %1, %0" : "=m" (bits[idx]) : "r" (~mask) : "cc");
 }

@@ -23,6 +23,7 @@
 typedef int (* IPPacketReceiveCallback)(const void *buf, int len);
 
 class DeviceManager;
+class TransportLayer;
 
 /**
  * @brief Class supporting sending/receiving IPv4 packets encapsulated
@@ -43,7 +44,7 @@ private:
     bool handleHello(const u_char *buf, int len, int device_id);
     bool handleLinkState(const u_char *buf, int len, int device_id);
 public:
-    NetworkLayer();
+    NetworkLayer(TransportLayer *trans);
     ~NetworkLayer();
     int sendIPPacket(const struct in_addr src, const struct in_addr dest,
                      int proto, const void* buf, int len);

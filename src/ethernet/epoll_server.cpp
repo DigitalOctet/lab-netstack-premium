@@ -15,7 +15,8 @@
  * 
  * @see epoll_create
  */
-EpollServer::EpollServer(NetworkLayer *net): events(), network_layer(net)
+EpollServer::EpollServer(NetworkLayer *net, TransportLayer *trans): 
+    events(), network_layer(net), transport_layer(trans)
 {
     if((epfd = epoll_create(1)) == -1){
         std::cerr << "Epoll creation failed!" << std::endl;

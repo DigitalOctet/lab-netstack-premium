@@ -27,7 +27,7 @@
  * descriptor. This is used for allocating new file descriptors while remaining 
  * the semantics of the standard one.
  */
-TransportLayer::TransportLayer(): fd2tcb(), bitmap(PORT_END - PORT_BEGIN)
+TransportLayer::TransportLayer(): fd2tcb(), tcbs(), bitmap(PORT_END)
 {
     default_fd = open("/dev/null", O_RDWR, 0);
     if(default_fd < 0){
@@ -35,7 +35,7 @@ TransportLayer::TransportLayer(): fd2tcb(), bitmap(PORT_END - PORT_BEGIN)
         return;
     }
 
-    network_layer = new NetworkLayer();
+    network_layer = new NetworkLayer(this);
 }
 
 /**
@@ -87,7 +87,10 @@ TransportLayer::_socket(int domain, int type, int protocol)
 
     int fd = dup(default_fd);
     TCB *tcb = new TCB();
+    tcb_mutex.lock();
     fd2tcb[fd] = tcb;
+    tcbs.insert(tcb);
+    tcb_mutex.unlock();
     return fd;
 }
 
@@ -95,11 +98,12 @@ int
 TransportLayer::_bind(int socket, const struct sockaddr *address, 
                       socklen_t address_len)
 {
+    tcb_mutex.lock();
     auto it = fd2tcb.find(socket);
     if(it == fd2tcb.end()){
+        tcb_mutex.unlock();
         return __real_bind(socket, address, address_len);
     }
-
     // Invalid `address_len`
     if(address_len != sizeof(struct sockaddr_in)){
         errno = EINVAL;
@@ -108,22 +112,23 @@ TransportLayer::_bind(int socket, const struct sockaddr *address,
 
     // If the socket has already been bound to an address
     TCB *tcb = it->second;
-    tcb->mutex.lock();
-    if(tcb->socket_state != SocketState::UNOPENED){
-        tcb->mutex.unlock();
+    tcb->bind_mutex.lock();
+    tcb_mutex.unlock();
+    if(tcb->socket_state != SocketState::UNSPECIFIED){
+        tcb->bind_mutex.unlock();
         errno = EINVAL;
         return -1;
     }
 
     const struct sockaddr_in *addr = (const struct sockaddr_in *)address;
     if(addr->sin_family != AF_INET){
-        tcb->mutex.unlock();
+        tcb->bind_mutex.unlock();
         errno = EAFNOSUPPORT; // Address family not supported by protocol
         return -1;
     }
     if(addr->sin_addr.s_addr != INADDR_ANY){
         if(!network_layer->findIP(addr->sin_addr)){
-            tcb->mutex.unlock();
+            tcb->bind_mutex.unlock();
             errno = EADDRNOTAVAIL; // Cannot assign requested address
             return -1;
         }
@@ -136,31 +141,58 @@ TransportLayer::_bind(int socket, const struct sockaddr *address,
     }
     tcb->src_port = addr->sin_port;
     tcb->socket_state = SocketState::BOUND;
-    tcb->mutex.unlock();
+    tcb->bind_mutex.unlock();
     return 0;
 }
 
 int 
 TransportLayer::_listen(int socket, int backlog)
 {
+    tcb_mutex.lock();
     auto it = fd2tcb.find(socket);
     if(it == fd2tcb.end()){
+        tcb_mutex.unlock();
         return __real_listen(socket, backlog);
     }
 
+    size_t port;
     TCB *tcb = it->second;
-    tcb->mutex.lock();
+
+    tcb->bind_mutex.lock();
+    tcb_mutex.unlock();
     if(tcb->socket_state == SocketState::ACTIVE){
-        tcb->mutex.unlock();
+        tcb->bind_mutex.unlock();
         errno = EINVAL;
         return -1;
     }
     else if(tcb->socket_state == SocketState::PASSIVE){
         // `listen()` doesn't fail if it has already been called on the same 
-        // socket. I don't know its behavior. Here I simply discard all 
-        // connections.
-        while(!tcb->pending.empty()){
-            tcb->pending.pop();
+        // socket. I don't know its behavior in this case. Here I simply 
+        // do nothing.
+        tcb->bind_mutex.unlock();
+        return 0;
+    }
+    else if(tcb->socket_state == SocketState::UNSPECIFIED){
+        // If socket hasn't been previously bound to an address, bind it to the 
+        // default IP address and an ephemeral port number.
+        port = generatePort();
+        if(port == BITMAP_ERROR){
+            tcb->bind_mutex.unlock();
+            errno = EADDRINUSE;
+            return -1;
+        }
+        tcb->src_port = change_order((u_short)port);
+        tcb->src_addr = network_layer->getIP();
+        tcb->socket_state = SocketState::BOUND;
+    }
+    else if(tcb->socket_state == SocketState::BOUND){
+        if(bitmap.bitmap_test(change_order(tcb->src_port))){
+            tcb->bind_mutex.unlock();
+            errno = EADDRINUSE;
+            return -1;
+        }
+        else{
+            bitmap.bitmap_mark(change_order(tcb->src_port));
         }
     }
 
@@ -183,60 +215,72 @@ TransportLayer::_listen(int socket, int backlog)
     tcb->backlog = backlog;
     tcb->socket_state = SocketState::PASSIVE;
     tcb->state = ConnectionState::LISTEN;
-    tcb->mutex.unlock();
+    tcb->bind_mutex.unlock();
     return 0;
 }
 
-/**
- * 
- */
 int 
 TransportLayer::_connect(int socket, const struct sockaddr *address, 
                          socklen_t address_len)
 {
+    tcb_mutex.lock();
     auto it = fd2tcb.find(socket);
     if(it == fd2tcb.end()){
+        tcb_mutex.unlock();
         return __real_connect(socket, address, address_len);
     }
 
     // Invalid `address_len`
     if(address_len != sizeof(struct sockaddr_in)){
+        tcb_mutex.unlock();
         errno = EINVAL;
         return -1;
     }
 
-    // socket has already been set on a connection
     TCB *tcb = it->second;
-    tcb->mutex.lock();
-    if((tcb->socket_state == SocketState::ACTIVE) || 
-       (tcb->socket_state == SocketState::PASSIVE))
+
+    // Bind socket to source and destination addresses.
+    tcb->bind_mutex.lock();
+    tcb_mutex.unlock();
+    if(tcb->socket_state == SocketState::UNSPECIFIED){
+        size_t port = generatePort();
+        if (port == BITMAP_ERROR) { // Cannot assign a port
+            tcb->bind_mutex.unlock();
+            errno = EADDRNOTAVAIL;
+            return -1;
+        }
+        tcb->src_addr = network_layer->getIP();
+        tcb->src_port = change_order((u_short)port);
+        tcb->socket_state = SocketState::BOUND;
+    }
+    else if(tcb->socket_state == SocketState::BOUND){
+        bitmap.bitmap_mark(change_order(tcb->src_port));
+    }
+    else if((tcb->socket_state == SocketState::ACTIVE) || 
+            (tcb->socket_state == SocketState::PASSIVE))
     {
-        tcb->mutex.unlock();
+        tcb->bind_mutex.unlock();
         errno = EISCONN;
         return -1;
     }
-
-    // Bind socket to source and destination addresses.
+    tcb->socket_state = SocketState::ACTIVE;
+    tcb->conn_mutex.lock();
+    tcb->bind_mutex.unlock();
     struct sockaddr_in *address_in = (struct sockaddr_in *)address;
-    size_t port = generatePort();
-    if (port == BITMAP_ERROR) { // Cannot assign a port
-        tcb->mutex.unlock();
-        errno = EADDRNOTAVAIL;
-        return -1;
-    }
-    if(tcb->socket_state == SocketState::UNOPENED){
-        tcb->src_addr = network_layer->getIP();
-        tcb->src_port = change_order((u_short)port);
-    }
     tcb->dst_addr = address_in->sin_addr;
     tcb->dst_port = address_in->sin_port;
-    tcb->socket_state = SocketState::ACTIVE;
 
     // Send SYN
     sendSegment(tcb, SegmentType::SYN, NULL, 0);
     tcb->state = ConnectionState::SYN_SENT;
-    tcb->mutex.unlock();
+    tcb->conn_mutex.unlock();
     sem_wait(&tcb->semaphore);
+    if(tcb->state == ConnectionState::CLOSED){
+        bitmap.bitmap_reset(change_order(tcb->src_port));
+        delete tcb;
+        errno = EBADF;
+        return -1;
+    }
     return 0;
 }
 
@@ -244,28 +288,63 @@ int
 TransportLayer::_accept(int socket, struct sockaddr *address, 
                         socklen_t *address_len)
 {
+    tcb_mutex.lock();
     auto it = fd2tcb.find(socket);
     if(it == fd2tcb.end()){
+        tcb_mutex.unlock();
         return __real_accept(socket, address, address_len);
     }
 
     TCB *conn_tcb;
     TCB *listen_tcb = it->second;
-    listen_tcb->mutex.lock();
+    listen_tcb->bind_mutex.lock();
+    tcb_mutex.unlock();
     if(listen_tcb->socket_state != SocketState::PASSIVE){
-        listen_tcb->mutex.unlock();
+        listen_tcb->bind_mutex.unlock();
         errno = EINVAL;
         return -1;
     }
-    listen_tcb->mutex.unlock();
+    listen_tcb->accepting_cnt++;
+    listen_tcb->bind_mutex.unlock();
     sem_wait(&listen_tcb->semaphore); // Wait for a ready connection
+    listen_tcb->bind_mutex.lock();
+    listen_tcb->accepting_cnt--;
+    if(listen_tcb->state == ConnectionState::CLOSED){
+        if(listen_tcb->accepting_cnt == 0){
+            bitmap.bitmap_reset(change_order(listen_tcb->src_port));
+            for(auto it: listen_tcb->received){
+                delete it;
+            }
+            listen_tcb->pending_mutex.lock();
+            while(!listen_tcb->pending.empty()){
+                auto it = listen_tcb->pending.front();
+                delete it;
+                listen_tcb->pending.pop();
+            }
+            listen_tcb->pending_mutex.unlock();
+            delete listen_tcb;
+        }
+        listen_tcb->bind_mutex.unlock();
+        errno = EINVAL;
+        return -1;
+    }
 
-    listen_tcb->mutex.lock();
+    listen_tcb->pending_mutex.lock();
+    if(listen_tcb->pending.empty()){
+        listen_tcb->pending_mutex.unlock();
+        errno = EINVAL;
+        return -1;
+    }
     conn_tcb = listen_tcb->pending.front();
     listen_tcb->pending.pop();
-    listen_tcb->mutex.unlock();
+    bitmap.bitmap_add(change_order(conn_tcb->src_port));
+    listen_tcb->pending_mutex.unlock();
+
+    // Create file description and bind it to the connected tcb.
     int fd = dup(default_fd);
+    tcb_mutex.lock();
     fd2tcb[fd] = conn_tcb;
+    tcb_mutex.unlock();
 
     // Return address
     if(address != NULL){
@@ -283,30 +362,56 @@ TransportLayer::_accept(int socket, struct sockaddr *address,
     return fd;
 }
 
-/**
- * @note The behavior of reading and writing to a socket without a connection 
- * isn't specified in the document. My experiment show that it will cause 
- * the process to exit.
- */
 ssize_t 
 TransportLayer::_read(int fildes, void *buf, size_t nbyte)
 {
+    tcb_mutex.lock();
     auto it = fd2tcb.find(fildes);
     if(it == fd2tcb.end()){
+        tcb_mutex.unlock();
         return __real_read(fildes, buf, nbyte);
     }
 
     TCB *tcb = it->second;
     ssize_t rc;
-    tcb->mutex.lock();
-    if(tcb->socket_state != SocketState::ACTIVE){
-        exit(0);
+    tcb->conn_mutex.lock();
+    if(tcb->state == ConnectionState::CLOSE_WAIT){
+        tcb->conn_mutex.unlock();
+        // Return EOF
+        return 0;
     }
-    else if(tcb->socket_state != ConnectionState::FIN_WAIT1){
-        exit(0);
+    if(tcb->state != ConnectionState::ESTABLISHED){
+        tcb->conn_mutex.unlock();
+        errno = ENOTCONN;
+        return -1;
     }
-    rc = tcb->readWindow((u_char *)buf, nbyte);
-    tcb->mutex.unlock();
+    tcb->reading_cnt--;
+    tcb->conn_mutex.unlock();
+
+    while(nbyte > 0){
+        nbyte -= tcb->readWindow((u_char *)buf, nbyte);
+        sendSegment(tcb, SegmentType::ACK, NULL, 0);
+    }
+
+    tcb->conn_mutex.lock();
+    tcb->reading_cnt--;
+    if(tcb->closed){
+        if((tcb->reading_cnt == 0) && (tcb->writing_cnt == 0)){
+            tcb->state = ConnectionState::FIN_WAIT1;
+            tcb->conn_mutex.unlock();
+            sendSegment(tcb, SegmentType::FIN_ACK, NULL, 0);
+            sem_wait(&tcb->fin_sem);
+            bitmap.bitmap_delete(change_order(tcb->src_port));
+            delete tcb;
+        }
+        else{
+            tcb->conn_mutex.unlock();
+        }
+    }
+    else{
+        tcb->conn_mutex.unlock();
+    }
+
     return rc;
 }
 
@@ -316,56 +421,184 @@ TransportLayer::_read(int fildes, void *buf, size_t nbyte)
 ssize_t 
 TransportLayer::_write(int fildes, const void *buf, size_t nbyte)
 {
+    tcb_mutex.lock();
     auto it = fd2tcb.find(fildes);
     if(it == fd2tcb.end()){
+        tcb_mutex.unlock();
         return __real_write(fildes, buf, nbyte);
     }
 
     TCB *tcb = it->second;
     u_short dest_window;
-    tcb->mutex.lock();
-    if(tcb->socket_state != SocketState::ACTIVE){
-        exit(0);
+    tcb->conn_mutex.lock();
+    tcb_mutex.unlock();
+    if((tcb->state == ConnectionState::FIN_WAIT1) || 
+       (tcb->state == ConnectionState::FIN_WAIT2))
+    {
+        tcb->conn_mutex.unlock();
+        // return EOF
+        return 0;
     }
-    else if(tcb->state != ConnectionState::CLOSE_WAIT){
-        exit(0);
+    if(tcb->state != ConnectionState::ESTABLISHED){
+        tcb->conn_mutex.unlock();
+        // NOTE: The behavior of writing to a listening socket can be 
+        // different on Linux machines.
+        errno = EPIPE;
+        return -1;
     }
-    dest_window = tcb->getDestWindow();
-    if(dest_window >= nbyte){
-        sendSegment(tcb, SegmentType::ACK, buf, nbyte);
-        nbyte = 0;
-        tcb->setDestWindow(dest_window - nbyte);
+    tcb->writing_cnt++;
+    tcb->conn_mutex.unlock();
+
+    while(nbyte > 0){
+        dest_window = tcb->getDestWindow();
+        if(dest_window >= nbyte){
+            sendSegment(tcb, SegmentType::ACK, buf, nbyte);
+            nbyte = 0;
+            tcb->setDestWindow(dest_window - nbyte);
+        }
+        else if(dest_window > 0){
+            sendSegment(tcb, SegmentType::ACK, buf, dest_window);
+            nbyte -= dest_window;
+            tcb->setDestWindow(0);
+        }
+    }
+
+    tcb->conn_mutex.lock();
+    tcb->writing_cnt--;
+    if(tcb->closed){
+        if((tcb->reading_cnt == 0) && (tcb->writing_cnt == 0)){
+            tcb->state = ConnectionState::FIN_WAIT1;
+            tcb->conn_mutex.unlock();
+            sendSegment(tcb, SegmentType::FIN_ACK, NULL, 0);
+            sem_wait(&tcb->fin_sem);
+            bitmap.bitmap_delete(change_order(tcb->src_port));
+            delete tcb;
+        }
+        else{
+            tcb->conn_mutex.unlock();
+        }
     }
     else{
-        sendSegment(tcb, SegmentType::ACK, buf, dest_window);
-        nbyte -= dest_window;
-        tcb->setDestWindow(0);
+        tcb->conn_mutex.unlock();
     }
-    tcb->mutex.unlock();
     return nbyte;
 }
 
+/**
+ * @see https://man7.org/linux/man-pages/man2/close.2.html
+ * 
+ *  Multithreaded processes and close()
+ *     It is probably unwise to close file descriptors while they may be
+ *     in use by system calls in other threads in the same process.
+ *     Since a file descriptor may be reused, there are some obscure
+ *     race conditions that may cause unintended side effects.
+ *
+ *     Furthermore, consider the following scenario where two threads
+ *     are performing operations on the same file descriptor:
+ *
+ *     (1)  One thread is blocked in an I/O system call on the file
+ *          descriptor.  For example, it is trying to write(2) to a pipe
+ *          that is already full, or trying to read(2) from a stream
+ *          socket which currently has no available data.
+ *
+ *     (2)  Another thread closes the file descriptor.
+ *
+ *     The behavior in this situation varies across systems.  On some
+ *     systems, when the file descriptor is closed, the blocking system
+ *     call returns immediately with an error.
+ *
+ *     On Linux (and possibly some other systems), the behavior is
+ *     different: the blocking I/O system call holds a reference to the
+ *     underlying open file description, and this reference keeps the
+ *     description open until the I/O system call completes.  (See
+ *     open(2) for a discussion of open file descriptions.)  Thus, the
+ *     blocking system call in the first thread may successfully
+ *     complete after the close() in the second thread.
+ * 
+ * My implementation follow the behavior of the Linux machines.
+ */
 int 
 TransportLayer::_close(int fildes)
 {
+    tcb_mutex.lock();
     auto it = fd2tcb.find(fildes);
     if(it == fd2tcb.end()){
+        tcb_mutex.unlock();
         return __real_close(fildes);
     }
 
     TCB *tcb = it->second;
-    tcb->mutex.lock();
-    if(tcb->state == ConnectionState::ESTABLISHED){
-        tcb->state = ConnectionState::FIN_WAIT1;
+    tcb->bind_mutex.lock();
+    if(tcb->socket_state == SocketState::UNSPECIFIED){
+        // Put erasure before deletion to prevent other functions from finding 
+        // this tcb.
+        __real_close(fildes);
+        fd2tcb.erase(fildes);
+        tcbs.erase(tcb);
+        tcb_mutex.unlock();
+        // Wait for potential `bind()` to finish to avoid segmentation fault
+        tcb->bind_mutex.unlock();
+        delete tcb;
+        return 0;
     }
-    else if(tcb->state == ConnectionState::LAST_ACK){
+
+    if(tcb->socket_state == SocketState::BOUND){
+        __real_close(fildes);
+        fd2tcb.erase(fildes);
+        tcbs.erase(tcb);
+        tcb_mutex.unlock();
+        tcb->bind_mutex.unlock();
+        delete tcb;
+        return 0;
+    }
+
+    if(tcb->socket_state == SocketState::PASSIVE){
+        __real_close(fildes);
+        fd2tcb.erase(fildes);
+        tcbs.erase(tcb);
+        tcb_mutex.unlock();
         tcb->state = ConnectionState::CLOSED;
+        if(tcb->accepting_cnt == 0){
+            bitmap.bitmap_delete(change_order(tcb->src_port));
+            delete tcb;
+        }
+        else{
+            for(int i = 0; i < tcb->accepting_cnt; i++){
+                sem_post(&tcb->semaphore);
+            }
+        }
+        tcb->bind_mutex.unlock();
+        return 0;
     }
-    else{
-        
+    
+    if(tcb->socket_state == SocketState::ACTIVE){
+        __real_close(fildes);
+        fd2tcb.erase(fildes);
+        tcb->conn_mutex.lock();
+        tcb_mutex.unlock();
+        tcb->bind_mutex.unlock();
+        if(tcb->state == ConnectionState::SYN_SENT){
+            tcb->state = ConnectionState::CLOSED;
+            tcb->conn_mutex.unlock();
+            sem_post(&tcb->semaphore);
+            return 0;
+        }
+        if(tcb->state == ConnectionState::ESTABLISHED){
+            tcb->closed = true;
+            if((tcb->reading_cnt == 0) && (tcb->writing_cnt == 0)){
+                tcb->state = ConnectionState::FIN_WAIT1;
+                tcb->conn_mutex.unlock();
+                sendSegment(tcb, SegmentType::FIN_ACK, NULL, 0);
+                sem_wait(&tcb->fin_sem);
+                bitmap.bitmap_delete(change_order(tcb->src_port));
+                delete tcb;
+            }
+            else{
+                tcb->conn_mutex.unlock();
+            }
+            return 0;
+        }
     }
-    sendSegment(tcb, SegmentType::FIN_ACK, NULL, 0);
-    tcb->mutex.unlock();
     return 0;
 }
 
@@ -454,8 +687,8 @@ TransportLayer::_getaddrinfo(const char *node, const char *service,
 size_t
 TransportLayer::generatePort()
 {
-    size_t idx = bitmap.bitmap_scan_and_flip(0, 1, false);
-    return idx == BITMAP_ERROR ? BITMAP_ERROR : idx + PORT_BEGIN;
+    size_t idx = bitmap.bitmap_scan_and_flip(PORT_BEGIN, 1, false);
+    return idx == BITMAP_ERROR ? BITMAP_ERROR : idx;
 }
 
 /**
@@ -566,8 +799,6 @@ TransportLayer::callBack(const u_char *buf, int len,
     unsigned int header_len, seq, ack;
     u_short window;
 
-    // Port number
-
     // Calculate checksum
     pseudo_header->src_addr = dst_addr;
     pseudo_header->dst_addr = src_addr;
@@ -616,16 +847,14 @@ TransportLayer::callBack(const u_char *buf, int len,
     switch (type)
     {
     case SegmentType::SYN:
-        for(auto &it: fd2tcb)
+        tcb_mutex.lock();
+        for(auto it: tcbs)
         {
-            it.second->mutex.lock();
-            if((it.second->socket_state == SocketState::PASSIVE) && 
-               (it.second->state == ConnectionState::LISTEN) &&
-               (it.second->src_addr.s_addr == dst_addr.s_addr) && 
-               (it.second->src_port == tcp_header->dst_port))
+            if((it->state == ConnectionState::LISTEN) &&
+               (it->src_addr.s_addr == dst_addr.s_addr) && 
+               (it->src_port == tcp_header->dst_port))
             {
-                if(it.second->pending.size() + it.second->received.size() 
-                    < it.second->backlog)
+                if(it->pending.size() + it->received.size() < it->backlog)
                 {
                     tcb = new TCB();
                     tcb->src_addr = dst_addr;
@@ -633,54 +862,59 @@ TransportLayer::callBack(const u_char *buf, int len,
                     tcb->dst_addr = src_addr;
                     tcb->dst_port = tcp_header->src_port;
                     tcb->socket_state = SocketState::ACTIVE;
+                    tcb->state = ConnectionState::SYN_RCVD;
                     tcb->setAcknowledgement(seq + 1);
                     tcb->setDestWindow(window);
-                    tcb->state = ConnectionState::SYN_RCVD;
+                    it->received.insert(tcb);
                     sendSegment(tcb, SegmentType::SYN_ACK, NULL, 0);
-                    it.second->received.insert(tcb);
                 }
-                it.second->mutex.unlock();
                 break;
             }
-            it.second->mutex.unlock();
         }
+        tcb_mutex.unlock();
         break;
     
     case SegmentType::SYN_ACK:
-        for(auto &it: fd2tcb)
+        tcb_mutex.lock();
+        for(auto it: tcbs)
         {
-            it.second->mutex.lock();
-            if((it.second->socket_state == SocketState::ACTIVE) && 
-               (it.second->state == ConnectionState::SYN_SENT) &&
-               (it.second->src_addr.s_addr == dst_addr.s_addr) && 
-               (it.second->src_port == tcp_header->dst_port) &&
-               (it.second->dst_addr.s_addr == src_addr.s_addr) &&
-               (it.second->dst_port == tcp_header->src_port))
-            {
-                it.second->setAcknowledgement(seq + 1);
-                it.second->setDestWindow(window);
-                it.second->state = ConnectionState::ESTABLISHED;
-                sendSegment(it.second, SegmentType::ACK, NULL, 0);
-                it.second->mutex.unlock();
-                break;
+            it->conn_mutex.lock();
+            if(it->state == ConnectionState::SYN_SENT){
+                if((it->src_addr.s_addr == dst_addr.s_addr) && 
+                   (it->src_port == tcp_header->dst_port) &&
+                   (it->dst_addr.s_addr == src_addr.s_addr) &&
+                   (it->dst_port == tcp_header->src_port))
+                {
+                    it->setAcknowledgement(seq + 1);
+                    it->setDestWindow(window);
+                    it->state = ConnectionState::ESTABLISHED;
+                    it->conn_mutex.unlock();
+                    sendSegment(it, SegmentType::ACK, NULL, 0);
+                    sem_post(&it->semaphore);
+                    break;
+                }
             }
-            it.second->mutex.unlock();
+            it->conn_mutex.unlock();
         }
+        tcb_mutex.unlock();
         break;
     
     case SegmentType::ACK:
         bool flag = false;
-        for(auto &it: fd2tcb)
+        tcb_mutex.lock();
+        for(auto it: tcbs)
         {
-            it.second->mutex.lock();
-            switch (it.second->state)
+            it->bind_mutex.lock();
+            it->conn_mutex.lock();
+            switch (it->state)
             {
             case ConnectionState::LISTEN:
-                if((it.second->socket_state == SocketState::PASSIVE) &&
-                   (it.second->src_addr.s_addr == dst_addr.s_addr) &&
-                   (it.second->src_port == tcp_header->dst_port))
+                it->conn_mutex.unlock();
+                if((it->socket_state == SocketState::PASSIVE) &&
+                   (it->src_addr.s_addr == dst_addr.s_addr) &&
+                   (it->src_port == tcp_header->dst_port))
                 {
-                    for(auto &i: it.second->received)
+                    for(auto &i: it->received)
                     {
                         if((i->dst_addr.s_addr == src_addr.s_addr) &&
                            (i->dst_port == tcp_header->src_port))
@@ -688,8 +922,8 @@ TransportLayer::callBack(const u_char *buf, int len,
                             i->setAcknowledgement(seq + 1);
                             i->setDestWindow(window);
                             i->state = ConnectionState::ESTABLISHED;
-                            it.second->received.erase(i);
-                            it.second->pending.push(i);
+                            it->received.erase(i);
+                            it->pending.push(i);
                             sem_post(&tcb->semaphore);
                             flag = true;
                             break;
@@ -699,100 +933,117 @@ TransportLayer::callBack(const u_char *buf, int len,
                 break;
 
             case ConnectionState::ESTABLISHED:
-                if((it.second->socket_state == SocketState::ACTIVE) && 
-                   (it.second->src_addr.s_addr == dst_addr.s_addr) && 
-                   (it.second->src_port == tcp_header->dst_port) &&
-                   (it.second->dst_addr.s_addr == src_addr.s_addr) &&
-                   (it.second->dst_port == tcp_header->src_port))
+                it->conn_mutex.unlock();
+                if((it->src_addr.s_addr == dst_addr.s_addr) && 
+                   (it->src_port == tcp_header->dst_port) &&
+                   (it->dst_addr.s_addr == src_addr.s_addr) &&
+                   (it->dst_port == tcp_header->src_port))
                 {
                     flag = true;
-                    if(seq != it.second->getAcknowledgement()){
+                    if(seq != it->getAcknowledgement()){
+                        it->conn_mutex.unlock();
                         break;
                     }
-                    it.second->setAcknowledgement(seq + rest_len);
-                    it.second->setDestWindow(window);
+                    it->setAcknowledgement(seq + rest_len);
+                    it->setDestWindow(window);
                     if(rest_len != 0){
-                        it.second->writeWindow(buf + header_len, rest_len);
+                        it->writeWindow(buf + header_len, rest_len);
                     }
-                    sendSegment(it.second, SegmentType::ACK, NULL, 0);
+                    sendSegment(it, SegmentType::ACK, NULL, 0);
                 }
                 break;
 
             case ConnectionState::FIN_WAIT1:
-                if((it.second->src_addr.s_addr == dst_addr.s_addr) && 
-                   (it.second->src_port == tcp_header->dst_port) &&
-                   (it.second->dst_addr.s_addr == src_addr.s_addr) &&
-                   (it.second->dst_port == tcp_header->src_port))
+                if((it->src_addr.s_addr == dst_addr.s_addr) && 
+                   (it->src_port == tcp_header->dst_port) &&
+                   (it->dst_addr.s_addr == src_addr.s_addr) &&
+                   (it->dst_port == tcp_header->src_port))
                 {
                     flag = true;
-                    if(ack != it.second->getSequence()){
+                    if(ack != it->getSequence()){
+                        it->conn_mutex.unlock();
                         break;
                     }
-                    it.second->state = ConnectionState::FIN_WAIT2;
+                    it->state = ConnectionState::FIN_WAIT2;
+                    it->conn_mutex.unlock();
+                }
+                else{
+                    it->conn_mutex.unlock();
                 }
                 break;
             
             case ConnectionState::LAST_ACK:
-                if((it.second->src_addr.s_addr == dst_addr.s_addr) && 
-                   (it.second->src_port == tcp_header->dst_port) &&
-                   (it.second->dst_addr.s_addr == src_addr.s_addr) &&
-                   (it.second->dst_port == tcp_header->src_port))
+                if((it->src_addr.s_addr == dst_addr.s_addr) && 
+                   (it->src_port == tcp_header->dst_port) &&
+                   (it->dst_addr.s_addr == src_addr.s_addr) &&
+                   (it->dst_port == tcp_header->src_port))
                 {
                     flag = true;
-                    if(ack != it.second->getSequence()){
+                    if(ack != it->getSequence()){
+                        it->conn_mutex.unlock();
                         break;
                     }
-                    it.second->state = ConnectionState::CLOSED;
-                    it.second->socket_state = SocketState::UNOPENED;
+                    it->state = ConnectionState::CLOSED;
+                    it->conn_mutex.unlock();
+                }
+                else{
+                    it->conn_mutex.unlock();
                 }
                 break;
             
             default:
+                it->conn_mutex.unlock();
                 break;
             }
+            it->bind_mutex.unlock();
 
-            it.second->mutex.unlock();
             if(flag){
                 break;
             }
         }
+        tcb_mutex.unlock();
         break;
     
     case SegmentType::FIN:
         break;
     
     case SegmentType::FIN_ACK:
-        for(auto &it: fd2tcb)
+        tcb_mutex.lock();
+        for(auto it: tcbs)
         {
-            it.second->mutex.lock();
-            if((it.second->state == ConnectionState::ESTABLISHED) &&
-               (it.second->src_addr.s_addr == dst_addr.s_addr) && 
-               (it.second->src_port == tcp_header->dst_port) &&
-               (it.second->dst_addr.s_addr == src_addr.s_addr) &&
-               (it.second->dst_port == tcp_header->src_port))
+            it->conn_mutex.lock();
+            if((it->state == ConnectionState::ESTABLISHED) &&
+               (it->src_addr.s_addr == dst_addr.s_addr) && 
+               (it->src_port == tcp_header->dst_port) &&
+               (it->dst_addr.s_addr == src_addr.s_addr) &&
+               (it->dst_port == tcp_header->src_port))
             {
-                it.second->setAcknowledgement(seq + 1);
-                it.second->setDestWindow(window);
-                it.second->state = ConnectionState::CLOSE_WAIT;
-                sendSegment(it.second, SegmentType::ACK, NULL, 0);
-                it.second->mutex.unlock();
+                it->setAcknowledgement(seq + 1);
+                it->setDestWindow(window);
+                it->state = ConnectionState::CLOSE_WAIT;
+                it->conn_mutex.unlock();
+                sendSegment(it, SegmentType::ACK, NULL, 0);
                 break;
             }
-            else if((it.second->state == ConnectionState::FIN_WAIT2) &&
-                    (it.second->src_addr.s_addr == dst_addr.s_addr) && 
-                    (it.second->src_port == tcp_header->dst_port) &&
-                    (it.second->dst_addr.s_addr == src_addr.s_addr) &&
-                    (it.second->dst_port == tcp_header->src_port))
+            else if(((it->state == ConnectionState::FIN_WAIT1) || 
+                     (it->state == ConnectionState::FIN_WAIT2)) &&
+                    (it->src_addr.s_addr == dst_addr.s_addr) && 
+                    (it->src_port == tcp_header->dst_port) &&
+                    (it->dst_addr.s_addr == src_addr.s_addr) &&
+                    (it->dst_port == tcp_header->src_port))
             {
-                it.second->setAcknowledgement(seq + 1);
-                it.second->setDestWindow(window);
-                it.second->state = ConnectionState::TIMED_WAIT;
-                sendSegment(it.second, SegmentType::ACK, NULL, 0);
-                it.second->mutex.unlock();
+                it->setAcknowledgement(seq + 1);
+                it->setDestWindow(window);
+                it->state = ConnectionState::TIMED_WAIT;
+                it->conn_mutex.unlock();
+                sendSegment(it, SegmentType::ACK, NULL, 0);
                 break;
             }
-            it.second->mutex.unlock();
+            else{
+                it->conn_mutex.unlock();
+            }
         }
+        tcb_mutex.unlock();
         break;
 
     default:

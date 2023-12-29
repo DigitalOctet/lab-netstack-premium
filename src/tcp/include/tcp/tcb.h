@@ -71,10 +71,10 @@ typedef enum {
 
 
 typedef enum {
-    UNOPENED, /* Partially opened */
-    BOUND,    /* Called bind() on it successfully */
-    ACTIVE,   /* Socket for transmitting data */
-    PASSIVE,  /* Socket for listening */
+    UNSPECIFIED, /* Partially opened */
+    BOUND,       /* Called bind() on it successfully */
+    ACTIVE,      /* Socket for transmitting data */
+    PASSIVE,     /* Socket for listening */
 }SocketState;
 
 typedef enum {
@@ -114,7 +114,14 @@ public:
     std::set<TCB *> received;
 
     sem_t semaphore; // Used by both listening socket and connecting socket
-    std::mutex mutex;
+    sem_t fin_sem;
+    std::mutex bind_mutex;
+    std::mutex conn_mutex;
+    std::mutex pending_mutex;
+    int accepting_cnt;
+    int reading_cnt;
+    int writing_cnt;
+    bool closed;
     ConnectionState state;
 
     TCB();

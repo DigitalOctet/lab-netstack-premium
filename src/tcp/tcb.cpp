@@ -6,8 +6,10 @@
 #include <string.h>
 #include <chrono>
 
-TCB::TCB(): seq_init(false), window(), ack(0), pending(),
-            socket_state(SocketState::UNOPENED), state(ConnectionState::CLOSED)
+TCB::TCB(): 
+    seq_init(false), window(), ack(0), pending(), accepting_cnt(0),
+    reading_cnt(0), writing_cnt(0), closed(false), 
+    socket_state(SocketState::UNSPECIFIED), state(ConnectionState::CLOSED)
 {
     sem_init(&semaphore, 0, 0);
 }

@@ -13,8 +13,8 @@
 /**
  * @brief Constructor of `NetworkLayer`. Initialize device manager.
  */
-NetworkLayer::NetworkLayer(): 
-    callback(NULL), device_manager(this), 
+NetworkLayer::NetworkLayer(TransportLayer *trans): 
+    callback(NULL), device_manager(this, trans), 
     timer_running(false), routing_table(&device_manager)
 {
     if(device_manager.addAllDevice() == -1){
@@ -596,10 +596,13 @@ NetworkLayer::getIP()
 bool 
 NetworkLayer::findIP(const struct in_addr addr)
 {
+    routing_table.table_mutex.lock();
     for(auto &i: routing_table.my_IP_addrs){
         if(i.s_addr == addr.s_addr){
+            routing_table.table_mutex.unlock();
             return true;
         }
     }
+    routing_table.table_mutex.unlock();
     return false;
 }

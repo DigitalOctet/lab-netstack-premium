@@ -6,6 +6,8 @@
 #pragma once
 
 #include <sys/types.h>
+#include <map>
+#include <mutex>
 
 /**
  * Element type.
@@ -33,6 +35,8 @@ class BitMap
 private:
     size_t bit_cnt;     /**< Number of bits. */
     elem_type *bits;    /**< Elements that represent bits. */
+    std::mutex mutex;
+    std::map<size_t, int> map;
 public:
     BitMap(size_t bit_cnt);
     ~BitMap();
@@ -51,4 +55,6 @@ public:
     bool bitmap_all(size_t start, size_t cnt);
     size_t bitmap_scan(size_t start, size_t cnt, bool value);
     size_t bitmap_scan_and_flip(size_t start, size_t cnt, bool value);
+    void bitmap_add(size_t bit_idx);
+    void bitmap_delete(size_t bit_idx);
 };

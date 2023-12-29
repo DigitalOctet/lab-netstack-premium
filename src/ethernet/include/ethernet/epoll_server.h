@@ -27,7 +27,7 @@ private:
     NetworkLayer *network_layer;
     TransportLayer *transport_layer;
 public:
-    EpollServer(NetworkLayer *net);
+    EpollServer(NetworkLayer *net, TransportLayer *trans);
     ~EpollServer();
     int addRead(int fd, Device *device);
     int waitRead();

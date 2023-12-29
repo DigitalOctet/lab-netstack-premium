@@ -9,10 +9,10 @@
 /**
  * @brief Constructor of `DeviceManager`.
  */
-DeviceManager::DeviceManager(NetworkLayer *net): 
+DeviceManager::DeviceManager(NetworkLayer *net, TransportLayer *trans): 
     name2id(), id2device(), next_device_ID(0)
 {
-    epoll_server = new EpollServer(net);
+    epoll_server = new EpollServer(net, trans);
 
     // Find all devices.
     int ret = 0;
