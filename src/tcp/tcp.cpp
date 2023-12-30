@@ -36,6 +36,7 @@ TransportLayer::TransportLayer(): fd2tcb(), tcbs(), bitmap(PORT_END)
     }
 
     network_layer = new NetworkLayer(this);
+    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
     std::thread(&TransportLayer::updateRetrans, this).detach();
 }
 
@@ -312,17 +313,7 @@ TransportLayer::_accept(int socket, struct sockaddr *address,
     listen_tcb->accepting_cnt--;
     if(listen_tcb->state == ConnectionState::CLOSED){
         if(listen_tcb->accepting_cnt == 0){
-            bitmap.bitmap_reset(change_order(listen_tcb->src_port));
-            for(auto it: listen_tcb->received){
-                delete it;
-            }
-            listen_tcb->pending_mutex.lock();
-            while(!listen_tcb->pending.empty()){
-                auto it = listen_tcb->pending.front();
-                delete it;
-                listen_tcb->pending.pop();
-            }
-            listen_tcb->pending_mutex.unlock();
+            bitmap.bitmap_delete(change_order(listen_tcb->src_port));
             delete listen_tcb;
         }
         listen_tcb->bind_mutex.unlock();
@@ -606,6 +597,18 @@ TransportLayer::_close(int fildes)
             }
             return 0;
         }
+        if(tcb->state == ConnectionState::CLOSE_WAIT){
+            tcb->closed = true;
+            if((tcb->reading_cnt == 0) && (tcb->writing_cnt == 0)){
+                tcb->state = ConnectionState::LAST_ACK;
+                sendSegment(tcb, SegmentType::FIN_ACK, NULL, 0);
+                tcb->conn_mutex.unlock();
+            }
+            else{
+                tcb->conn_mutex.unlock();
+            }
+            return 0;
+        }
     }
     return 0;
 }
@@ -807,7 +810,8 @@ TransportLayer::callBack(const u_char *buf, int len,
     PseudoHeader *pseudo_header = (PseudoHeader *)(buf - SIZE_PSEUDO);
     TCB *tcb;
     unsigned int header_len, seq, ack_num;
-    u_short window;
+    u_short window, max_seg;
+    bool has_max_seg = false;
 
     // Calculate checksum
     pseudo_header->src_addr = dst_addr;
@@ -829,16 +833,29 @@ TransportLayer::callBack(const u_char *buf, int len,
     header_len = GET_OFF(tcp_header->data_off);
     rest_len -= header_len;
 
+    // Find maximum segment size option
+    for(int i = SIZE_TCP; i < header_len; i++){
+        if(buf[i] == OptionType::MAX_SEG_SIZE){
+            max_seg = change_order(*(u_short *)(buf + 2));
+            has_max_seg = true;
+            break;
+        }
+    }
+
     // Control bits
     u_char urg, ack, psh, rst, syn, fin;
     SegmentType type;
-    urg = tcp_header->ctl_bits & ControlBits::URG;
+    urg = tcp_header->ctl_bits & ControlBits::URG; // Not implemented
     ack = tcp_header->ctl_bits & ControlBits::ACK;
     psh = tcp_header->ctl_bits & ControlBits::PSH;
     rst = tcp_header->ctl_bits & ControlBits::RST;
     syn = tcp_header->ctl_bits & ControlBits::SYN;
     fin = tcp_header->ctl_bits & ControlBits::FIN;
-    if(syn && !ack){
+
+    if(rst){
+        type = SegmentType::RST;
+    }
+    else if(syn && !ack){
         type = SegmentType::SYN;
     }
     else if(syn && ack){
@@ -856,6 +873,41 @@ TransportLayer::callBack(const u_char *buf, int len,
 
     switch (type)
     {
+    case SegmentType::RST:
+        bool flag = false;
+        tcb_mutex.lock();
+        for(auto it: tcbs){
+            if((it->state == ConnectionState::LISTEN) &&
+               (it->src_addr.s_addr == dst_addr.s_addr) && 
+               (it->src_port == tcp_header->dst_port))
+            {
+                for(auto i: it->received){
+                    if((i->dst_addr.s_addr == src_addr.s_addr) &&
+                       (i->dst_port == tcp_header->src_port))
+                    {
+                        flag = true;
+                        it->received.erase(i);
+                        delete i;
+                        break;
+                    }
+                }
+                break;
+            }
+            else if((it->state != ConnectionState::CLOSED) &&
+                    (it->src_addr.s_addr == dst_addr.s_addr) &&
+                    (it->src_port == tcp_header->dst_port) &&
+                    (it->dst_addr.s_addr == src_addr.s_addr) &&
+                    (it->dst_port == tcp_header->src_port))
+            {
+
+            }
+            if(flag){
+                break;
+            }
+        }
+        tcb_mutex.unlock();
+        break;
+
     case SegmentType::SYN:
         tcb_mutex.lock();
         for(auto it: tcbs)
@@ -875,6 +927,7 @@ TransportLayer::callBack(const u_char *buf, int len,
                     tcb->state = ConnectionState::SYN_RCVD;
                     tcb->setAcknowledgement(seq + 1);
                     tcb->setDestWindow(window);
+                    if(has_max_seg) it->setMaxSegSize(max_seg);
                     it->received.insert(tcb);
                     sendSegment(tcb, SegmentType::SYN_ACK, NULL, 0);
                 }
@@ -898,6 +951,7 @@ TransportLayer::callBack(const u_char *buf, int len,
                     it->setAcknowledgement(seq + 1);
                     it->setDestWindow(window);
                     it->setSndUna(ack_num);
+                    if(has_max_seg) it->setMaxSegSize(max_seg);
                     it->state = ConnectionState::ESTABLISHED;
                     sendSegment(it, SegmentType::ACK, NULL, 0);
                     it->conn_mutex.unlock();
@@ -954,6 +1008,11 @@ TransportLayer::callBack(const u_char *buf, int len,
                         it->conn_mutex.unlock();
                         break;
                     }
+                    int size = it->getMaxSegSize();
+                    if((size != -1) && (size < len)){
+                        it->conn_mutex.unlock();
+                        break;
+                    }
                     it->setAcknowledgement(seq + rest_len);
                     it->setDestWindow(window);
                     it->setSndUna(ack_num);
@@ -1005,8 +1064,9 @@ TransportLayer::callBack(const u_char *buf, int len,
                     flag = true;
                     if(ack_num == it->getSequence()){
                         it->state = ConnectionState::CLOSED;
-                        bitmap.bitmap_delete(change_order(it->src_port));
                         it->conn_mutex.unlock();
+                        tcbs.erase(it);
+                        bitmap.bitmap_delete(change_order(it->src_port));
                         delete it;
                         break;
                     }
@@ -1090,6 +1150,9 @@ void
 TransportLayer::timedWait(TCB *tcb)
 {
     std::this_thread::sleep_for(std::chrono::milliseconds(2 * tcb->srtt));
+    tcb_mutex.lock();
+    tcbs.erase(tcb);
+    tcb_mutex.unlock();
     bitmap.bitmap_delete(change_order(tcb->src_port));
     delete tcb;
     return;
@@ -1103,10 +1166,11 @@ TransportLayer::updateRetrans()
 {
     while(true) {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        tcb_mutex.lock();
         for(auto tcb: tcbs){
             tcb->retrans_mutex.lock();
-            for (auto it = tcb->retrans_list.begin(); 
-                 it != tcb->retrans_list.end(); ) 
+            for(auto it = tcb->retrans_list.begin(); 
+                it != tcb->retrans_list.end(); ) 
             {
                 RetransElem *e = *it;
                 if(e->seq < tcb->getSndUna()){
@@ -1127,6 +1191,7 @@ TransportLayer::updateRetrans()
             }
             tcb->retrans_mutex.unlock();
         }
+        tcb_mutex.unlock();
     }
     return;
 }

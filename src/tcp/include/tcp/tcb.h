@@ -61,20 +61,21 @@
 #include <set>
 
 typedef enum {
-    URG = 0x20, /* Urgent Pointer field significant */
-    ACK = 0x10, /* Acknowledgment field significant */
-    PSH = 0x08, /* Push Function */
-    RST = 0x04, /* Reset the connection */
-    SYN = 0x02, /* Synchronize sequence numbers */
-    FIN = 0x01, /* No more data from sender */
+    URG = 0x20, // Urgent Pointer field significant. 
+                // Not implemented because it's rarely used.
+    ACK = 0x10, // Acknowledgment field significant
+    PSH = 0x08, // Push Function. 
+                // Ignored because my implementation doesn't buffer data.
+    RST = 0x04, // Reset the connection.
+    SYN = 0x02, // Synchronize sequence numbers
+    FIN = 0x01, // No more data from sender
 }ControlBits;
 
-
 typedef enum {
-    UNSPECIFIED, /* Partially opened */
-    BOUND,       /* Called bind() on it successfully */
-    ACTIVE,      /* Socket for transmitting data */
-    PASSIVE,     /* Socket for listening */
+    UNSPECIFIED, // Partially opened
+    BOUND,       // Called bind() on it successfully
+    ACTIVE,      // Socket for transmitting data
+    PASSIVE,     // Socket for listening
 }SocketState;
 
 typedef enum {
@@ -103,6 +104,7 @@ private:
     unsigned int rcv_nxt; // receive next
     Window window;
     u_short snd_wnd;   // send window
+    int max_seg;
     int64_t getTimeMicro();
     int64_t getTimeMilli();
 public:
@@ -136,7 +138,7 @@ public:
     std::mutex retrans_mutex;
 
     TCB();
-    ~TCB() = default;
+    ~TCB();
     unsigned int getSequence();
     void setSequence(unsigned int sequence);
     void setSndUna(unsigned int sequence);
@@ -148,5 +150,7 @@ public:
     ssize_t readWindow(u_char *buf, int len);
     void setDestWindow(u_short window);
     u_short getDestWindow();
+    void setMaxSegSize(u_short size);
+    int getMaxSegSize();
     void insertRetrans(u_char *segment, unsigned int seq, int len);
 };

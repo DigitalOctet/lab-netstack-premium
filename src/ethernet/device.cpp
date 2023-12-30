@@ -60,12 +60,12 @@ Device::~Device()
  * @brief Check whether the length of the frame is valid. 
  * 
  * Follow the rule of Ethernet II, i.e., the length of data is in [46, 1500]. 
- * This is slightly different from IEEE 802.3, because we don't use padding.
+ * If the length is less than 46, pad the packet with 0.
  */
 inline bool
 Device::is_valid_length(int len)
 {
-    return len >= MIN_PAYLOAD && len <= MAX_PAYLOAD;
+    return len <= MAX_PAYLOAD;
 }
 
 /**
@@ -82,14 +82,15 @@ int
 Device::sendFrame(const void* buf, int len, 
                   int ethtype, const struct in_addr dest_ip)
 {
-    int frame_len;
+    int frame_len, real_len;
     u_char *frame;
     if(!is_valid_length(len)){
         std::cerr << "Data length invalid: " << len << " !" << std::endl;
         return -1;
     }
+    real_len = len < MIN_PAYLOAD ? MIN_PAYLOAD : len;
     u_short correct_ethtype = change_order((u_short)ethtype);
-    frame_len = SIZE_ETHERNET + len;
+    frame_len = SIZE_ETHERNET + real_len;
     frame = new u_char[frame_len];
     if(!check_MAC()){
         std::cerr << "Send frame failed: destination MAC unavailable!\n";
@@ -100,6 +101,7 @@ Device::sendFrame(const void* buf, int len,
     memcpy(frame + ETHER_ADDR_LEN, mac_addr, ETHER_ADDR_LEN);
     memcpy(frame + 2 * ETHER_ADDR_LEN, &correct_ethtype, ETHER_TYPE_LEN);
     memcpy(frame + SIZE_ETHERNET, buf, len);
+    memset(frame + SIZE_ETHERNET + len, 0, real_len - len);
     if(pcap_sendpacket(handle, frame, frame_len) != 0){
         std::cerr << "Send frame failed!" << std::endl;
         delete[] frame;

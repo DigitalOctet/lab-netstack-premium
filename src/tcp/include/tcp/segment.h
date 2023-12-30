@@ -48,7 +48,14 @@ typedef enum {
     ACK,
     FIN,
     FIN_ACK,
+    RST,
 } SegmentType;
+
+typedef enum {
+    END = 0,
+    NO_OP = 1,
+    MAX_SEG_SIZE = 2,
+} OptionType;
 
 /* Pseudo header */
 struct PseudoHeader

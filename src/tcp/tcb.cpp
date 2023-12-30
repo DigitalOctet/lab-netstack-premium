@@ -7,11 +7,35 @@
 #include <chrono>
 
 TCB::TCB(): 
-    seq_init(false), window(), pending(), accepting_cnt(0),
+    seq_init(false), window(), pending(), accepting_cnt(0), max_seg(-1),
     reading_cnt(0), writing_cnt(0), closed(false), srtt(100), rttvar(0),
     socket_state(SocketState::UNSPECIFIED), state(ConnectionState::CLOSED)
 {
     sem_init(&semaphore, 0, 0);
+}
+
+/**
+ * @brief Clear all elements in retransmit queue, pending queue and received 
+ * set.
+ */
+TCB::~TCB()
+{
+    retrans_mutex.lock();
+    for(auto e: retrans_list){
+        delete e;
+    }
+    retrans_mutex.unlock();
+
+    for(auto it: received){
+        delete it;
+    }
+    pending_mutex.lock();
+    while(!pending.empty()){
+        auto it = pending.front();
+        delete it;
+        pending.pop();
+    }
+    pending_mutex.unlock();
 }
 
 /**
@@ -165,6 +189,18 @@ u_short
 TCB::getDestWindow()
 {
     return snd_wnd;
+}
+
+void 
+TCB::setMaxSegSize(u_short size)
+{
+    max_seg = size;
+}
+
+int 
+TCB::getMaxSegSize()
+{
+    return max_seg;
 }
 
 /**

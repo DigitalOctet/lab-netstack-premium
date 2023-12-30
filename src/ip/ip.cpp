@@ -24,7 +24,7 @@ NetworkLayer::NetworkLayer(TransportLayer *trans):
     routing_table.setMyIP();
     std::thread(&DeviceManager::readLoop, 
                 &device_manager, device_manager.epoll_server).detach();
-    startTimer(2500);
+    startTimer(250);
 }
 
 /**

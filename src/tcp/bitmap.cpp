@@ -290,6 +290,7 @@ BitMap::bitmap_delete(size_t bit_idx)
         it->second--;
         if(it->second == -1){
             reset = true;
+            map.erase(idx);
         }
     }
     else{
