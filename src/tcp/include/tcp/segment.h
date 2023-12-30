@@ -38,6 +38,9 @@
 #define DEFAULT_OFF (5 << 4)
 #define GET_OFF(x)  (((u_char)(x) >> 2) & ~0x3)
 
+/* Time to retransmit a segment(in 5 milliseconds) */
+#define RETRANS_TIME 40
+
 /* Segment type */
 typedef enum {
     SYN,
@@ -69,6 +72,23 @@ struct TCPHeader
     u_short window;
     u_short checksum;
     u_short urgent;
+};
+
+/**
+ * @class An object of RetransElem is an element in the retransmit queue that 
+ * maintains the segment to retransmit, length of the segment, and time from 
+ * the segment is first sent up to now.
+ */
+class RetransElem
+{
+public:
+    u_char *segment;
+    unsigned int seq;
+    int len;
+    int time;
+
+    RetransElem(u_char *seg, unsigned int s, int l);
+    ~RetransElem();
 };
 
 /**

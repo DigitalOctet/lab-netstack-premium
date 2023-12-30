@@ -6,6 +6,14 @@
 #include <ip/packet.h>
 #include <tcp/segment.h>
 
+RetransElem::RetransElem(u_char *seg, unsigned int s, int l): 
+    segment(seg), seq(s), len(l), time(0) {}
+
+RetransElem::~RetransElem()
+{
+    delete[] segment;
+}
+
 u_short 
 calculate_checksum(const u_char *segment, int len)
 {

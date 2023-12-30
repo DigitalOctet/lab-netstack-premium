@@ -7,11 +7,37 @@
 #include <chrono>
 
 TCB::TCB(): 
-    seq_init(false), window(), ack(0), pending(), accepting_cnt(0),
-    reading_cnt(0), writing_cnt(0), closed(false), 
+    seq_init(false), window(), pending(), accepting_cnt(0),
+    reading_cnt(0), writing_cnt(0), closed(false), srtt(100), rttvar(0),
     socket_state(SocketState::UNSPECIFIED), state(ConnectionState::CLOSED)
 {
     sem_init(&semaphore, 0, 0);
+}
+
+/**
+ * @brief Obtain time in microseconds.
+ */
+int64_t 
+TCB::getTimeMicro()
+{
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    auto duration = currentTime.time_since_epoch();
+    auto microseconds = \
+        std::chrono::duration_cast<std::chrono::microseconds>(duration);
+    return microseconds.count();
+}
+
+/**
+ * @brief Obtain time in milliseconds.
+ */
+int64_t 
+TCB::getTimeMilli()
+{
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    auto duration = currentTime.time_since_epoch();
+    auto milliseconds = \
+        std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+    return milliseconds.count();
 }
 
 /**
@@ -21,33 +47,46 @@ unsigned int
 TCB::getSequence()
 {
     if(seq_init){
-        return seq;
+        return snd_nxt;
     }
 
     seq_init = true;
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    auto duration = currentTime.time_since_epoch();
-    auto microseconds = \
-        std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
-    return (microseconds >> 2) & 0xffffffffu;
+    auto microseconds = getTimeMicro();
+    snd_nxt = snd_una = (microseconds >> 2) & 0xffffffffu;
+    return snd_nxt;
 }
 
 /**
- * @brief Set sequence number.
+ * @brief Set the next sequence number to send, i.e., snd_nxt.
  */
 void 
 TCB::setSequence(unsigned int sequence)
 {
-    seq += sequence;
+    snd_nxt = sequence;
 }
 
 /**
- * @brief Get acknowledgement number.
+ * @brief Set the first unacknowledged number.
+ */
+void 
+TCB::setSndUna(unsigned int sequence)
+{
+    snd_una = sequence;
+}
+
+unsigned int 
+TCB::getSndUna()
+{
+    return snd_una;
+}
+
+/**
+ * @brief Get acknowledgement number, the next sequence number to receive.
  */
 unsigned int
 TCB::getAcknowledgement()
 {
-    return ack;
+    return rcv_nxt;
 }
 
 /**
@@ -56,7 +95,7 @@ TCB::getAcknowledgement()
 void 
 TCB::setAcknowledgement(unsigned int acknowledgement)
 {
-    ack = acknowledgement;
+    rcv_nxt = acknowledgement;
 }
 
 /**
@@ -116,7 +155,7 @@ TCB::readWindow(u_char *buf, int len)
 void 
 TCB::setDestWindow(u_short window)
 {
-    dst_window = window;
+    snd_wnd = window;
 }
 
 /**
@@ -125,5 +164,19 @@ TCB::setDestWindow(u_short window)
 u_short 
 TCB::getDestWindow()
 {
-    return dst_window;
+    return snd_wnd;
+}
+
+/**
+ * @brief After successfully sending a segment, insert the segment to the 
+ * retransmit list waiting for ack or timeout.
+ */
+void 
+TCB::insertRetrans(u_char *segment, unsigned int seq, int len)
+{
+    RetransElem *e = new RetransElem(segment, seq, len);
+    retrans_mutex.lock();
+    retrans_list.push_back(e);
+    retrans_mutex.unlock();
+    return;
 }

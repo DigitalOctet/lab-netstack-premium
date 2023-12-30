@@ -1,6 +1,6 @@
 /**
  * @file window.h
- * @brief Window. Simply allocate a 64KB buffer for each connection.
+ * @brief Window. Simply allocate a 32KB buffer for each connection.
  */
 
 #include <mutex>

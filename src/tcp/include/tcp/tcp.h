@@ -61,4 +61,9 @@ public:
     bool sendSegment(TCB *socket, SegmentType type, const void *buf, int len);
     bool callBack(const u_char *buf, int len, 
                   struct in_addr src_addr, struct in_addr dst_addr);
+
+    // Timed wait thread
+    void timedWait(TCB *tcb);
+    // Retransmission
+    void updateRetrans();
 };

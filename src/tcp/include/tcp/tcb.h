@@ -1,7 +1,5 @@
 /**
- * @file socket_class.h
- * @brief Class that manages sockets.
- * @note It doesn't support Simultaneous connection now.
+ * @file tcb.h
  * 
  *                              +---------+ ---------\      active OPEN
  *                              |  CLOSED |            \    -----------
@@ -53,9 +51,11 @@
 
 #pragma once
 
+#include <tcp/segment.h>
 #include <tcp/window.h>
 #include <netinet/ip.h>
 #include <semaphore.h>
+#include <list>
 #include <mutex>
 #include <queue>
 #include <set>
@@ -98,10 +98,13 @@ class TCB
 {
 private:
     bool seq_init;
-    unsigned int seq;
-    unsigned int ack;
+    unsigned int snd_una; // send unacknowledged
+    unsigned int snd_nxt; // send next
+    unsigned int rcv_nxt; // receive next
     Window window;
-    u_short dst_window;
+    u_short snd_wnd;   // send window
+    int64_t getTimeMicro();
+    int64_t getTimeMilli();
 public:
     SocketState socket_state;
     struct in_addr src_addr;
@@ -124,10 +127,20 @@ public:
     bool closed;
     ConnectionState state;
 
+    // TODO: round-trip time (milliseconds) and variance 
+    // Set RTT to 100ms now.
+    int64_t srtt;
+    int64_t rttvar;
+    // List to retransmit
+    std::list<RetransElem *> retrans_list;
+    std::mutex retrans_mutex;
+
     TCB();
     ~TCB() = default;
     unsigned int getSequence();
     void setSequence(unsigned int sequence);
+    void setSndUna(unsigned int sequence);
+    unsigned int getSndUna();
     unsigned int getAcknowledgement();
     void setAcknowledgement(unsigned int ack);
     u_short getWindow();
@@ -135,4 +148,5 @@ public:
     ssize_t readWindow(u_char *buf, int len);
     void setDestWindow(u_short window);
     u_short getDestWindow();
+    void insertRetrans(u_char *segment, unsigned int seq, int len);
 };
