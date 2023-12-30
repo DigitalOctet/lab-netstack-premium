@@ -1,6 +1,7 @@
 /**
  * @file bitmap.h
  * @brief Defines bitmap used for managing port numbers.
+ * Adapted from PintOS.
  */
 
 #pragma once

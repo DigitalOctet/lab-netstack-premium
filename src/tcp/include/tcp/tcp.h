@@ -27,9 +27,6 @@ private:
     TransportLayer(const TransportLayer &) = delete;
     TransportLayer &operator=(const TransportLayer &) = delete;
 
-    static TransportLayer *instance;
-    static std::mutex mutex;
-
     int default_fd;
     std::map<int, TCB *> fd2tcb;
     std::set<TCB *> tcbs;
@@ -39,6 +36,9 @@ private:
 
     // Private helper functions
     size_t generatePort();
+    // Send segments
+    bool sendSegment(TCB *socket, SegmentType::SegmentType type, 
+                     const void *buf, int len);
 
 public:
     static TransportLayer &getInstance();
@@ -57,8 +57,7 @@ public:
     int _getaddrinfo(const char *node, const char *service,
                      const struct addrinfo *hints, struct addrinfo **res);
 
-    // Segment sending and receiving
-    bool sendSegment(TCB *socket, SegmentType type, const void *buf, int len);
+    // Receiving segments
     bool callBack(const u_char *buf, int len, 
                   struct in_addr src_addr, struct in_addr dst_addr);
 

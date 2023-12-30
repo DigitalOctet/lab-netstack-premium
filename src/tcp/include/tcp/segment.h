@@ -30,6 +30,8 @@
 
 #pragma once
 
+#include <arpa/inet.h>
+
 /* TCP headers excluding options are 20 bytes. */
 #define SIZE_TCP 20
 /* Psuedo header */
@@ -42,20 +44,25 @@
 #define RETRANS_TIME 40
 
 /* Segment type */
-typedef enum {
-    SYN,
-    SYN_ACK,
-    ACK,
-    FIN,
-    FIN_ACK,
-    RST,
-} SegmentType;
+namespace SegmentType {
+    enum SegmentType {
+        SYN,
+        SYN_ACK,
+        ACK,
+        FIN,
+        FIN_ACK,
+        RST,
+    };
+}
 
-typedef enum {
-    END = 0,
-    NO_OP = 1,
-    MAX_SEG_SIZE = 2,
-} OptionType;
+namespace OptionType {
+    enum OptionType {
+        END = 0,
+        NO_OP = 1,
+        MAX_SEG_SIZE = 2,
+    };
+}
+
 
 /* Pseudo header */
 struct PseudoHeader

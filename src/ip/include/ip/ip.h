@@ -44,7 +44,7 @@ private:
     bool handleHello(const u_char *buf, int len, int device_id);
     bool handleLinkState(const u_char *buf, int len, int device_id);
 public:
-    NetworkLayer(TransportLayer *trans);
+    NetworkLayer(TransportLayer *trans = NULL);
     ~NetworkLayer();
     int sendIPPacket(const struct in_addr src, const struct in_addr dest,
                      int proto, const void* buf, int len);

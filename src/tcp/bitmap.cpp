@@ -4,7 +4,7 @@
  * Adapted from PintOS.
  */
 
-#include "bitmap.h"
+#include <tcp/tcp.h>
 #include <limits.h>
 #include <malloc.h>
 #include <stdlib.h>
@@ -105,7 +105,7 @@ BitMap::bitmap_mark(size_t bit_idx)
     /* This is equivalent to `b->bits[idx] |= mask' except that it
         is guaranteed to be atomic on a uniprocessor machine.  See
         the description of the OR instruction in [IA32-v2b]. */
-    asm ("orl %1, %0" : "=m" (bits[idx]) : "r" (mask) : "cc");
+    asm ("orq %1, %0" : "=m" (bits[idx]) : "r" (mask) : "cc");
 }
 
 /** Atomically sets the bit numbered BIT_IDX in B to false. */
@@ -118,7 +118,7 @@ BitMap::bitmap_reset(size_t bit_idx)
     /* This is equivalent to `b->bits[idx] &= ~mask' except that it
         is guaranteed to be atomic on a uniprocessor machine.  See
         the description of the AND instruction in [IA32-v2a]. */
-    asm ("andl %1, %0" : "=m" (bits[idx]) : "r" (~mask) : "cc");
+    asm ("andq %1, %0" : "=m" (bits[idx]) : "r" (~mask) : "cc");
 }
 
 /** Atomically toggles the bit numbered IDX in B;
@@ -133,7 +133,7 @@ BitMap::bitmap_flip (size_t bit_idx)
     /* This is equivalent to `b->bits[idx] ^= mask' except that it
         is guaranteed to be atomic on a uniprocessor machine.  See
         the description of the XOR instruction in [IA32-v2b]. */
-    asm ("xorl %1, %0" : "=m" (bits[idx]) : "r" (mask) : "cc");
+    asm ("xorq %1, %0" : "=m" (bits[idx]) : "r" (mask) : "cc");
 }
 
 /** Returns the value of the bit numbered IDX in B. */
@@ -298,5 +298,5 @@ BitMap::bitmap_delete(size_t bit_idx)
     }
 
     if(reset)
-        asm ("andl %1, %0" : "=m" (bits[idx]) : "r" (~mask) : "cc");
+        asm ("andq %1, %0" : "=m" (bits[idx]) : "r" (~mask) : "cc");
 }

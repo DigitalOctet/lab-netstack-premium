@@ -62,6 +62,8 @@ TransportLayer::~TransportLayer()
 TransportLayer &
 TransportLayer::getInstance()
 {
+    static TransportLayer *instance = NULL;
+    static std::mutex mutex;
     mutex.lock();
     if(!instance){
         instance = new TransportLayer();
@@ -709,7 +711,7 @@ TransportLayer::generatePort()
  * @return `true` on success, `false` on error.
  */
 bool 
-TransportLayer::sendSegment(TCB *tcb, SegmentType type, 
+TransportLayer::sendSegment(TCB *tcb, SegmentType::SegmentType type, 
                             const void *buf, int len)
 {
     int rc;
@@ -844,7 +846,7 @@ TransportLayer::callBack(const u_char *buf, int len,
 
     // Control bits
     u_char urg, ack, psh, rst, syn, fin;
-    SegmentType type;
+    SegmentType::SegmentType type;
     urg = tcp_header->ctl_bits & ControlBits::URG; // Not implemented
     ack = tcp_header->ctl_bits & ControlBits::ACK;
     psh = tcp_header->ctl_bits & ControlBits::PSH;
@@ -871,10 +873,10 @@ TransportLayer::callBack(const u_char *buf, int len,
         type = SegmentType::ACK;
     }
 
+    bool flag = false;
     switch (type)
     {
     case SegmentType::RST:
-        bool flag = false;
         tcb_mutex.lock();
         for(auto it: tcbs){
             if((it->state == ConnectionState::LISTEN) &&
@@ -965,7 +967,6 @@ TransportLayer::callBack(const u_char *buf, int len,
         break;
     
     case SegmentType::ACK:
-        bool flag = false;
         tcb_mutex.lock();
         for(auto it: tcbs)
         {
@@ -1141,6 +1142,7 @@ TransportLayer::callBack(const u_char *buf, int len,
     default:
         break;
     }
+    return true;
 }
 
 /**

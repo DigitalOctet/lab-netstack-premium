@@ -2,7 +2,7 @@
  * @file window.cpp
  */
 
-#include "window.h"
+#include <tcp/tcp.h>
 
 Window::Window(): size(1 << 15), n(1 << 15), front(0), rear(0)
 {

@@ -4,6 +4,7 @@
 
 #include <ethernet/epoll_server.h>
 #include <ip/ip.h>
+#include <tcp/real_socket.h>
 #include <tcp/tcp.h>
 #include <unistd.h>
 #include <iostream>
@@ -31,7 +32,7 @@ EpollServer::EpollServer(NetworkLayer *net, TransportLayer *trans):
 EpollServer::~EpollServer()
 {
     if(epfd >= 0){
-        if(close(epfd) == -1){
+        if(__real_close(epfd) == -1){
             std::cerr << "Close epfd error!" << std::endl;
         }
     }

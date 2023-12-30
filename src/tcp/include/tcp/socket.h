@@ -3,9 +3,12 @@
  * @brief POSIX-compatible socket library supporting TCP protocol on IPv4.
  */
 
+#pragma once
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <unistd.h>
 
 /**
  * @see [POSIX.1-2017: socket]

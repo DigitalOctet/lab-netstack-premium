@@ -3,6 +3,8 @@
  * @brief Window. Simply allocate a 32KB buffer for each connection.
  */
 
+#pragma once
+
 #include <mutex>
 
 class Window

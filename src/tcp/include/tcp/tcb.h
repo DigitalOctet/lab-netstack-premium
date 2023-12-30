@@ -60,37 +60,43 @@
 #include <queue>
 #include <set>
 
-typedef enum {
-    URG = 0x20, // Urgent Pointer field significant. 
-                // Not implemented because it's rarely used.
-    ACK = 0x10, // Acknowledgment field significant
-    PSH = 0x08, // Push Function. 
-                // Ignored because my implementation doesn't buffer data.
-    RST = 0x04, // Reset the connection.
-    SYN = 0x02, // Synchronize sequence numbers
-    FIN = 0x01, // No more data from sender
-}ControlBits;
+namespace ControlBits {
+    enum ControlBits {
+        URG = 0x20, // Urgent Pointer field significant. 
+                    // Not implemented because it's rarely used.
+        ACK = 0x10, // Acknowledgment field significant
+        PSH = 0x08, // Push Function. 
+                    // Ignored because my implementation doesn't buffer data.
+        RST = 0x04, // Reset the connection.
+        SYN = 0x02, // Synchronize sequence numbers
+        FIN = 0x01, // No more data from sender
+    };
+}
 
-typedef enum {
-    UNSPECIFIED, // Partially opened
-    BOUND,       // Called bind() on it successfully
-    ACTIVE,      // Socket for transmitting data
-    PASSIVE,     // Socket for listening
-}SocketState;
+namespace SocketState {
+    enum SocketState{
+        UNSPECIFIED, // Partially opened
+        BOUND,       // Called bind() on it successfully
+        ACTIVE,      // Socket for transmitting data
+        PASSIVE,     // Socket for listening
+    };
+}
 
-typedef enum {
-    CLOSED,
-    SYN_SENT,
-    ESTABLISHED,
-    LISTEN,
-    SYN_RCVD,
-    FIN_WAIT1,
-    FIN_WAIT2,
-    CLOSING,
-    TIMED_WAIT,
-    CLOSE_WAIT,
-    LAST_ACK,
-}ConnectionState;
+namespace ConnectionState {
+    enum ConnectionState {
+        CLOSED,
+        SYN_SENT,
+        ESTABLISHED,
+        LISTEN,
+        SYN_RCVD,
+        FIN_WAIT1,
+        FIN_WAIT2,
+        CLOSING,
+        TIMED_WAIT,
+        CLOSE_WAIT,
+        LAST_ACK,
+    };
+}
 
 /**
  * @brief Transmission Control Block
@@ -108,7 +114,7 @@ private:
     int64_t getTimeMicro();
     int64_t getTimeMilli();
 public:
-    SocketState socket_state;
+    SocketState::SocketState socket_state;
     struct in_addr src_addr;
     u_short src_port;
     struct in_addr dst_addr;
@@ -127,7 +133,7 @@ public:
     int reading_cnt;
     int writing_cnt;
     bool closed;
-    ConnectionState state;
+    ConnectionState::ConnectionState state;
 
     // TODO: round-trip time (milliseconds) and variance 
     // Set RTT to 100ms now.

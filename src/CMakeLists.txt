@@ -2,31 +2,46 @@ project(netStack)
 cmake_minimum_required(VERSION 3.10)
 set(CMAKE_CXX_STANDARD 17)
 
+set(WRAP_FUNC
+    socket
+    bind
+    listen
+    connect
+    accept
+    read
+    write
+    close
+    getaddrinfo)
+# List of targets
+set(TARGETS_LAB1
+    detectNIC
+    send_frame
+    receive_frame
+    epoll_test)
+set(TARGETS_LAB2
+    packet
+    arp)
+
+# Add subdirectories
 add_subdirectory(ethernet)
 add_subdirectory(ip)
+add_subdirectory(tcp)
 
-add_executable(detectNIC tests/lab1-link-layer/detectNIC.cpp)
-target_link_libraries(detectNIC PUBLIC ethernet)
-target_link_libraries(detectNIC PUBLIC ip)
+# Function to simplify target linking
+function(link_targets TARGET)
+    target_link_libraries(${TARGET} PRIVATE ethernet ip tcp ethernet ip)
+    foreach(FUNC_NAME ${WRAP_FUNC})
+        target_link_options(${TARGET} PRIVATE -Wl,--wrap,${FUNC_NAME})
+    endforeach()
+endfunction()
 
-add_executable(send_frame tests/lab1-link-layer/send_frame.cpp)
-target_link_libraries(send_frame PUBLIC ethernet)
-target_link_libraries(send_frame PUBLIC ip)
+# Create and link executables
+foreach(TARGET_NAME ${TARGETS_LAB1})
+    add_executable(${TARGET_NAME} tests/lab1-link-layer/${TARGET_NAME}.cpp)
+    link_targets(${TARGET_NAME})
+endforeach()
 
-add_executable(receive_frame tests/lab1-link-layer/receive_frame.cpp)
-target_link_libraries(receive_frame PUBLIC ethernet)
-target_link_libraries(receive_frame PUBLIC ip)
-
-add_executable(epoll_test tests/lab1-link-layer/epoll_test.cpp)
-target_link_libraries(epoll_test PUBLIC ethernet)
-target_link_libraries(epoll_test PUBLIC ip)
-
-
-
-add_executable(packet tests/lab2-network-layer/packet.cpp)
-target_link_libraries(packet PUBLIC ethernet)
-target_link_libraries(packet PUBLIC ip)
-
-add_executable(arp tests/lab2-network-layer/packet.cpp)
-target_link_libraries(arp PUBLIC ethernet)
-target_link_libraries(arp PUBLIC ip)
+foreach(TARGET_NAME ${TARGETS_LAB2})
+    add_executable(${TARGET_NAME} tests/lab2-network-layer/${TARGET_NAME}.cpp)
+    link_targets(${TARGET_NAME})
+endforeach()

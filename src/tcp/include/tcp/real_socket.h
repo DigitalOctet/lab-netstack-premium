@@ -2,10 +2,14 @@
  * @file real_socket.h
  */
 
+#pragma once
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <unistd.h>
 
+extern "C" {
 int __real_socket(int domain, int type, int protocol);
 
 int __real_bind(int socket, const struct sockaddr *address,
@@ -27,3 +31,4 @@ int __real_close(int fildes);
 
 int __real_getaddrinfo(const char *node, const char *service,
                        const struct addrinfo *hints, struct addrinfo **res);
+}

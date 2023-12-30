@@ -27,7 +27,7 @@ private:
 public:
     EpollServer *epoll_server;
     
-    DeviceManager(NetworkLayer *net, TransportLayer *trans);
+    DeviceManager(NetworkLayer *net, TransportLayer *trans = NULL);
     ~DeviceManager();
     int addDevice(const char* device);
     int findDevice(const char* device);
