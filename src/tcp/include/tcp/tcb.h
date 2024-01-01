@@ -121,7 +121,7 @@ public:
     u_short dst_port;
     // For listening socket
     int backlog;
-    std::queue<TCB *> pending;
+    std::list<TCB *> pending;
     std::set<TCB *> received;
 
     sem_t semaphore; // Used by both listening socket and connecting socket
@@ -146,7 +146,7 @@ public:
     TCB();
     ~TCB();
     unsigned int getSequence();
-    void setSequence(unsigned int sequence);
+    void updateSequence(unsigned int delta);
     void setSndUna(unsigned int sequence);
     unsigned int getSndUna();
     unsigned int getAcknowledgement();

@@ -50,6 +50,8 @@ int
 NetworkLayer::sendIPPacket(const struct in_addr src, const struct in_addr dest,
                            int proto, const void* buf, int len)
 {
+    int rc;
+
     // Check protocol
     if((proto != IPv4_PROTOCOL_TCP) && 
        (proto != IPv4_PROTOCOL_TESTING1) &&
@@ -60,6 +62,7 @@ NetworkLayer::sendIPPacket(const struct in_addr src, const struct in_addr dest,
     }
 
     u_char *packet = new u_char[SIZE_IPv4 + len];
+    memset(packet, 0, SIZE_IPv4 + len);
     memcpy(packet + SIZE_IPv4, buf, len);
     IPv4Header *ipv4_header = (IPv4Header *)packet;
 
@@ -104,12 +107,10 @@ NetworkLayer::sendIPPacket(const struct in_addr src, const struct in_addr dest,
             delete[] packet;
             return -1;
         }
-        if(
-            device_manager.sendFrame(
-                (const void *)packet, total_len,
-                ETHTYPE_IPv4, ipv4_header->dst_addr, device_id
-            ) == -1
-        ){
+        rc = device_manager.sendFrame((const void *)packet, total_len, 
+                                      ETHTYPE_IPv4, ipv4_header->dst_addr, 
+                                      device_id);
+        if(rc == -1){
             std::cerr << "Send frame Error!" << std::endl;
             delete[] packet;
             return -1;
@@ -186,11 +187,12 @@ NetworkLayer::setRoutingTable(const struct in_addr dest,
  * https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
  */
 int 
-NetworkLayer::callBack(const u_char *buf, int len, int device_id)
+NetworkLayer::callBack(const u_char *buf, int len, int device_id, 
+                       int *header_len)
 {
-    int rest_len = len;
+    int rest_len;
     IPv4Header ipv4_header = *(IPv4Header *)buf;
-    int header_len, options_len;
+    int options_len;
     int rc;
 
     // Version
@@ -200,14 +202,16 @@ NetworkLayer::callBack(const u_char *buf, int len, int device_id)
     }
     
     // IHL
-    header_len = GET_IHL(ipv4_header.version_IHL) << 2;
-    if(header_len < SIZE_IPv4){
-        std::cerr << "IHL(=" << header_len / 4 << ") error: " << "less than ";
+    *header_len = GET_IHL(ipv4_header.version_IHL) << 2;
+    if(*header_len < SIZE_IPv4){
+        std::cerr << "IHL(=" << *header_len / 4 << ") error: " << "less than ";
         std::cerr << "5!" << std::endl;
         return -1;
     }
-    options_len = header_len - SIZE_IPv4;
-    rest_len -= header_len;
+    options_len = *header_len - SIZE_IPv4;
+    // `rest_len` can be different from `len - header_len` due to the padding 
+    // 0 of the Ethernet frame.
+    rest_len = (u_short)change_order(ipv4_header.total_len) - *header_len;
 
     // Ignore Type of Service, Total Length, Identification.
     // NOTE: DF, MF, and Fragment Offset are also ignored because packets that 
@@ -231,7 +235,7 @@ NetworkLayer::callBack(const u_char *buf, int len, int device_id)
     ipv4_header.ttl -= 1;
 
     // Header Checksum
-    u_short sum = calculate_checksum((const u_short *)buf, header_len >> 1);
+    u_short sum = calculate_checksum((const u_short *)buf, (*header_len) >> 1);
     if(sum != 0){
         std::cerr << "Checksum error!" << std::endl;
         return -1;

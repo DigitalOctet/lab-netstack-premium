@@ -41,7 +41,7 @@
 #define GET_OFF(x)  (((u_char)(x) >> 2) & ~0x3)
 
 /* Time to retransmit a segment(in 5 milliseconds) */
-#define RETRANS_TIME 40
+#define RETRANS_TIME 4000
 
 /* Segment type */
 namespace SegmentType {

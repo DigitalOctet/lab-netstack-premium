@@ -5,20 +5,24 @@
  */
 
 #include "util.h"
+#ifndef STANDARD
 #include <tcp/socket.h>
+#endif
+#include <arpa/inet.h>
+#include <errno.h>
 #include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <arpa/inet.h>
 
 int main(int argc, char *argv[])
 {
     int listenfd, connfd;
     socklen_t clientlen;
     struct sockaddr_storage clientaddr;
-    char client_hostname[MAXLINE], client_port[MAXLINE], *port;
+    char client_hostname[MAXLINE], *port;
+    unsigned short client_port;
     struct addrinfo hints, *listp, *p;
 
     if(argc != 2){
@@ -63,17 +67,23 @@ int main(int argc, char *argv[])
 
     size_t n;
     char buf[MAXLINE];
+    char *bufp = buf;
     while(1){
         clientlen = sizeof(struct sockaddr_storage);
         connfd = accept(listenfd, (struct sockaddr *)&clientaddr, &clientlen);
-        getnameinfo((struct sockaddr *)&clientaddr, clientlen, client_hostname, 
-                    MAXLINE, client_port, MAXLINE, 0);
-        printf("connected to (%s %s)\n", client_hostname, client_port);
-        while((n = rio_readn(connfd, buf, 1)) != 0){
+        inet_ntop(AF_INET, &((struct sockaddr_in *)&clientaddr)->sin_addr, 
+                  client_hostname, INET_ADDRSTRLEN);
+        client_port = ntohs(((struct sockaddr_in *)&clientaddr)->sin_port);
+        printf("connected to (%s %d)\n", client_hostname, client_port);
+        while((n = rio_readn(connfd, bufp, 10)) != 0){
             printf("server received %d byte(s)\n", (int)n);
-            rio_writen(connfd, buf, n);
+            rio_writen(connfd, bufp, n);
+            bufp += n;
         }
+        break;
     }
+    close(listenfd);
+    close(connfd);
 
     return 0;
 }

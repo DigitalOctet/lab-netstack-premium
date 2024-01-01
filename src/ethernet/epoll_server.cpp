@@ -94,7 +94,7 @@ EpollServer::waitRead()
         // Handles a capture event.
         struct pcap_pkthdr *header;
         const u_char *data;
-        int ret;
+        int ret, header_len;
         while(true){
             ret = it->second->capNextEx(&header, &data);
             if(ret == 0){
@@ -127,7 +127,7 @@ EpollServer::waitRead()
                 continue;
             }
             rest_len = network_layer->callBack(data + offset, rest_len, 
-                                               it->second->id);
+                                               it->second->id, &header_len);
             if(rest_len == 0){
                 continue;
             }
@@ -135,11 +135,11 @@ EpollServer::waitRead()
                 continue;
             }
             // Transport layer
-            offset = total_len - rest_len;
+            IPv4Header *ipv4_header = (IPv4Header *)(data + offset);
+            offset += header_len;
             if(!transport_layer){
                 continue;
             }
-            IPv4Header *ipv4_header = (IPv4Header *)data;
             transport_layer->callBack(data + offset, rest_len, 
                                       ipv4_header->src_addr, 
                                       ipv4_header->dst_addr);

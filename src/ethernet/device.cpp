@@ -65,7 +65,7 @@ Device::~Device()
 inline bool
 Device::is_valid_length(int len)
 {
-    return len <= MAX_PAYLOAD;
+    return (len <= MAX_PAYLOAD);
 }
 
 /**

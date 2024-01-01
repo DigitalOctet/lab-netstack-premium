@@ -12,6 +12,7 @@ TCB::TCB():
     socket_state(SocketState::UNSPECIFIED), state(ConnectionState::CLOSED)
 {
     sem_init(&semaphore, 0, 0);
+    sem_init(&fin_sem, 0, 0);
 }
 
 /**
@@ -33,7 +34,7 @@ TCB::~TCB()
     while(!pending.empty()){
         auto it = pending.front();
         delete it;
-        pending.pop();
+        pending.pop_front();
     }
     pending_mutex.unlock();
 }
@@ -81,12 +82,12 @@ TCB::getSequence()
 }
 
 /**
- * @brief Set the next sequence number to send, i.e., snd_nxt.
+ * @brief Add DELTA to the next sequence number to send, i.e., snd_nxt.
  */
 void 
-TCB::setSequence(unsigned int sequence)
+TCB::updateSequence(unsigned int delta)
 {
-    snd_nxt = sequence;
+    snd_nxt += delta;
 }
 
 /**
@@ -158,17 +159,19 @@ ssize_t
 TCB::readWindow(u_char *buf, int len)
 {
     window.mutex.lock();
-    len = len > window.n - window.size ? window.n - window.size : len;
-    int rest = window.n - window.front;
-    if(rest >= len){
-        memcpy(buf, window.buf + window.front, len);
+    len = (len > window.n - window.size) ? (window.n - window.size) : len;
+    if(len != 0){
+        int rest = window.n - window.front;
+        if(rest >= len){
+            memcpy(buf, window.buf + window.front, len);
+        }
+        else{
+            memcpy(buf, window.buf + window.front, rest);
+            memcpy(buf + rest, window.buf, len - rest);
+        }
+        window.front = (window.front + len) % window.n;
+        window.size += len;
     }
-    else{
-        memcpy(buf, window.buf + window.front, rest);
-        memcpy(buf + rest, window.buf, len - rest);
-    }
-    window.front = (window.front + len) % window.n;
-    window.size += len;
     window.mutex.unlock();
     return len;
 }

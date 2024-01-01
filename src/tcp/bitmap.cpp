@@ -296,6 +296,7 @@ BitMap::bitmap_delete(size_t bit_idx)
     else{
         reset = true;
     }
+    mutex.unlock();
 
     if(reset)
         asm ("andq %1, %0" : "=m" (bits[idx]) : "r" (~mask) : "cc");

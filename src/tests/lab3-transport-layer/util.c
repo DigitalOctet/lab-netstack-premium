@@ -4,12 +4,15 @@
  */
 
 #include "util.h"
+#ifndef STANDARD
 #include <tcp/socket.h>
+#endif
 #include <sys/types.h>
 #include <errno.h>
+#include <stdio.h>
 #include <unistd.h>
 
-char *message = "Computer networking is hard.\n";
+char *message = "Computer networking is hard.";
 
 /*
  * rio_readn - Robustly read n bytes (unbuffered)

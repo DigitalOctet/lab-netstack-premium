@@ -11,7 +11,9 @@
  */
 
 #include "util.h"
+#ifndef STANDARD
 #include <tcp/socket.h>
+#endif
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -19,6 +21,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 int main(int argc, char *argv[])
 {
@@ -68,9 +71,10 @@ int main(int argc, char *argv[])
     rio_writen(clientfd, message, strlen(message));
     rio_readn(clientfd, buf, strlen(message));
     if(strcmp(message, buf)){
-        fprintf(stderr, "Message is damaged!\n");
+        fprintf(stderr, "Message is damaged! \"%s\" \"%s\"\n", message, buf);
         exit(0);
     }
+    close(clientfd);
     
     return 0;
 }

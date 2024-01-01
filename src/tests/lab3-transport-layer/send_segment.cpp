@@ -12,9 +12,9 @@ int main(){
     TCB tcb;
     tcb.src_addr.s_addr = 0x0101640a;
     tcb.src_port = 0x0008;
-    tcb.dst_addr.s_addr = 0x0203640a;
+    tcb.dst_addr.s_addr = 0x0201640a;
     tcb.dst_port = 0x0008;
-    char msg[10] = "012345678";
+    char msg[10] = "01234567";
     transport_layer.sendSegment(&tcb, SegmentType::ACK, msg, strlen(msg));
     // transport_layer.network_layer->sendIPPacket(tcb.src_addr, tcb.dst_addr, IPPROTO_TCP, msg, strlen(msg));
     while(true){};
