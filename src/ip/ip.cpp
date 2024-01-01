@@ -24,7 +24,7 @@ NetworkLayer::NetworkLayer(TransportLayer *trans):
     routing_table.setMyIP();
     std::thread(&DeviceManager::readLoop, 
                 &device_manager, device_manager.epoll_server).detach();
-    startTimer(250);
+    startTimer(2500);
 }
 
 /**
@@ -99,8 +99,8 @@ NetworkLayer::sendIPPacket(const struct in_addr src, const struct in_addr dest,
         // Look up routing table and send it to link layer.
         int device_id = routing_table.findEntry(ipv4_header->dst_addr);
         if(device_id == -1){
-            std::cerr << "IP address " << ipv4_header->dst_addr.s_addr;
-            std::cerr << " not found!" << std::endl;
+            fprintf(stderr, "IP address %x not found!\n", 
+                    ipv4_header->dst_addr.s_addr);
             delete[] packet;
             return -1;
         }
@@ -191,6 +191,7 @@ NetworkLayer::callBack(const u_char *buf, int len, int device_id)
     int rest_len = len;
     IPv4Header ipv4_header = *(IPv4Header *)buf;
     int header_len, options_len;
+    int rc;
 
     // Version
     if(GET_VERSION(ipv4_header.version_IHL) != IPv4_VERSION){
@@ -255,11 +256,10 @@ NetworkLayer::callBack(const u_char *buf, int len, int device_id)
                 return -1;
             }
             else{
-                if(
-                    device_manager.sendFrame(
-                        buf, len, ETHTYPE_IPv4, ipv4_header.dst_addr, device_id
-                    ) == -1
-                ){
+                rc = device_manager.sendFrame(buf, len, ETHTYPE_IPv4, 
+                                              ipv4_header.dst_addr, 
+                                              to_device_id);
+                if(rc == -1){
                     std::cerr << "Routing error: frame sending failed!\n";
                     return -1;
                 }
@@ -282,7 +282,7 @@ NetworkLayer::callBack(const u_char *buf, int len, int device_id)
         break;
     
     default:
-        std::cerr << "Protocol " << ipv4_header.protocol;
+        std::cerr << "Protocol " << (unsigned int)ipv4_header.protocol;
         std::cerr << " is not implemented!" << std::endl;
         rest_len = -1;
         break;
@@ -489,6 +489,7 @@ NetworkLayer::handleHello(const u_char *buf, int len, int device_id)
         routing_table.neighbors.push_back(
             std::make_pair(dest_ip, (unsigned int)age)
         );
+        routing_table.ip2device[dest_ip.s_addr] = device_id;
     }
     routing_table.neighbor_mutex.unlock();
 

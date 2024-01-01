@@ -36,7 +36,7 @@ TransportLayer::TransportLayer(): fd2tcb(), tcbs(), bitmap(PORT_END)
     }
 
     network_layer = new NetworkLayer(this);
-    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+    std::this_thread::sleep_for(std::chrono::milliseconds(50000));
     std::thread(&TransportLayer::updateRetrans, this).detach();
 }
 
@@ -85,7 +85,7 @@ TransportLayer::_socket(int domain, int type, int protocol)
     if((domain != AF_INET) || (type != SOCK_STREAM)) {
         return __real_socket(domain, type, protocol);
     }
-    if((protocol != 0) || (protocol != IPPROTO_TCP)) {
+    if((protocol != 0) && (protocol != IPPROTO_TCP)) {
         return __real_socket(domain, type, protocol);
     }
 
@@ -255,6 +255,7 @@ TransportLayer::_connect(int socket, const struct sockaddr *address,
         }
         tcb->src_addr = network_layer->getIP();
         tcb->src_port = change_order((u_short)port);
+        bitmap.bitmap_mark(change_order(tcb->src_port));
         tcb->socket_state = SocketState::BOUND;
     }
     else if(tcb->socket_state == SocketState::BOUND){
@@ -275,7 +276,11 @@ TransportLayer::_connect(int socket, const struct sockaddr *address,
     tcb->dst_port = address_in->sin_port;
 
     // Send SYN
-    sendSegment(tcb, SegmentType::SYN, NULL, 0);
+    if(!sendSegment(tcb, SegmentType::SYN, NULL, 0)){
+        tcb->conn_mutex.unlock();
+        errno = ECONNREFUSED;
+        return -1;
+    }
     tcb->state = ConnectionState::SYN_SENT;
     tcb->conn_mutex.unlock();
     sem_wait(&tcb->semaphore);
@@ -663,7 +668,7 @@ TransportLayer::_getaddrinfo(const char *node, const char *service,
         return __real_getaddrinfo(node, service, hints, res);
     }
 
-    struct addrinfo *p = new addrinfo();
+    struct addrinfo *p = (struct addrinfo *)malloc(sizeof(struct addrinfo));
     memset(p, 0, sizeof(*p));
     if(hints != NULL) {
         p->ai_flags = hints->ai_flags;
@@ -679,6 +684,7 @@ TransportLayer::_getaddrinfo(const char *node, const char *service,
     }
     p->ai_canonname = NULL;
     p->ai_addrlen = sizeof(struct sockaddr);
+    p->ai_addr = (struct sockaddr *)malloc(sizeof(struct sockaddr_in));
     ((struct sockaddr_in *)(p->ai_addr))->sin_family = AF_INET;
     if(service != NULL){
         ((struct sockaddr_in *)(p->ai_addr))->sin_port = change_order(port);

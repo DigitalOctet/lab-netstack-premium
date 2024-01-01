@@ -43,6 +43,7 @@ private:
     std::vector<struct in_addr> my_IP_addrs;
     std::vector<struct in_addr> masks;
     std::vector<int> device_ids;
+    std::map<unsigned int, int> ip2device; // Neighbor ID to device ID
     DeviceManager *device_manager;
 
     friend class NetworkLayer;

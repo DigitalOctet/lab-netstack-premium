@@ -9,6 +9,8 @@
 #include <string>
 #include <unordered_map>
 
+#define PRINTx
+
 /**
  * @brief Default constructor of `RoutingTable`.
  */
@@ -47,8 +49,8 @@ RoutingTable::findEntry(struct in_addr addr)
     table_mutex.lock();
     // Find the matching entry while applying the longest prefix matching.
     for(auto &entry: routing_table){
-        if(addr.s_addr & entry.mask.s_addr == entry.IP_addr.s_addr){
-            if(((~entry.mask.s_addr) & (longest_prefix.s_addr)) == 0){
+        if((addr.s_addr & entry.mask.s_addr) == entry.IP_addr.s_addr){
+            if(((~entry.mask.s_addr) & longest_prefix.s_addr) == 0){
                 longest_prefix = entry.IP_addr;
                 device_id = entry.device_id;
             }
@@ -85,9 +87,9 @@ RoutingTable::setMyIP()
             }
             addr = (struct sockaddr_in *)ifa->ifa_addr;
             my_IP_addrs.push_back(addr->sin_addr);
+            device_manager->setIP(addr->sin_addr, ifa->ifa_name);
             addr = (struct sockaddr_in *)ifa->ifa_netmask;
             masks.push_back(addr->sin_addr);
-            device_manager->setIP(addr->sin_addr, ifa->ifa_name);
             device_ids.push_back(device_manager->findDevice(ifa->ifa_name));
         }
     }
@@ -147,23 +149,22 @@ RoutingTable::updateStates()
     link_state_mutex.unlock();
     neighbor_mutex.unlock();
 
-    bool print = true;
-    if(print){
-        table_mutex.lock();
-        std::cout << "Updating routing table..." << std::endl;
-        int i = 0;
-        for(auto &entry: routing_table){
-            char ip[INET_ADDRSTRLEN], mask[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &entry.IP_addr, ip, sizeof(ip));
-            inet_ntop(AF_INET, &entry.mask, mask, sizeof(mask));
-            printf("Table entry %d:\n", i);
-            printf("\tIP Address: %s\n", ip);
-            printf("\tSubnet Mask: %s\n", mask);
-            printf("\tDevice ID: %d\n\n", entry.device_id);
-            i++;
-        }
-        table_mutex.unlock();
+#ifdef PRINT
+    table_mutex.lock();
+    std::cout << "Updating routing table..." << std::endl;
+    int i = 0;
+    for(auto &entry: routing_table){
+        char ip[INET_ADDRSTRLEN], mask[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &entry.IP_addr, ip, sizeof(ip));
+        inet_ntop(AF_INET, &entry.mask, mask, sizeof(mask));
+        printf("Table entry %d:\n", i);
+        printf("\tIP Address: %s\n", ip);
+        printf("\tSubnet Mask: %s\n", mask);
+        printf("\tDevice ID: %d\n\n", entry.device_id);
+        i++;
     }
+    table_mutex.unlock();
+#endif
 
     return;
 }
@@ -193,8 +194,10 @@ RoutingTable::shortest_path()
     // Add routers of link state packets to hash
     // If a host is not in the hash table, just leave it.
     std::unordered_map<unsigned int, int> m;
+    unsigned int a[MAX_NODES];
     for(int i = 0; i < n - 1; i++){
         m[link_state_list[i]->router_id[0].s_addr] = i + 1;
+        a[i + 1] = link_state_list[i]->router_id[0].s_addr;
     }
     m[my_IP_addrs[0].s_addr] = 0;
     for(auto &neighbor: neighbors){
@@ -257,12 +260,42 @@ RoutingTable::shortest_path()
         if(state[k].predecessor == -1) 
             continue;
         if(state[k].predecessor == 0){
-            for(auto &ip: link_state_list[j - 1]->router_id){
-                Entry e;
-                e.device_id = k;
-                e.IP_addr = ip;
-                e.mask.s_addr = IPv4_ADDR_BROADCAST;
-                routing_table.push_back(e);
+            int id, idx;
+            struct in_addr ip;
+            for(int i = 0; i < link_state_list[j - 1]->router_id.size(); i++){
+                ip = link_state_list[j - 1]->router_id[i];
+                auto nb = ip2device.find(ip.s_addr);
+                if(nb != ip2device.end()){
+                    id = nb->second;
+                    idx = i;
+                    Entry e;
+                    e.IP_addr = ip;
+                    e.mask.s_addr = IPv4_ADDR_BROADCAST;
+                    e.device_id = nb->second;
+                    routing_table.push_back(e);
+                    break;
+                }
+            }
+            for(int i = 0; i < link_state_list[j - 1]->router_id.size(); i++){
+                if(i != idx){
+                    Entry e;
+                    e.IP_addr = link_state_list[j - 1]->router_id[i];
+                    e.mask = link_state_list[j - 1]->mask[i];
+                    e.IP_addr.s_addr = e.IP_addr.s_addr & e.mask.s_addr;
+                    e.device_id = id;
+                    bool exist = false;
+                    for(auto &en: routing_table){
+                        if((en.IP_addr.s_addr == e.IP_addr.s_addr) &&
+                           (en.mask.s_addr == e.mask.s_addr))
+                        {
+                            exist = true;
+                            break;
+                        }
+                    }
+                    if(!exist){
+                        routing_table.push_back(e);
+                    }
+                }
             }
             continue;
         }
@@ -271,13 +304,15 @@ RoutingTable::shortest_path()
         }
         for(int i = 0; i < link_state_list[j - 1]->router_id.size(); i++){
             Entry e;
-            e.device_id = k;
             e.IP_addr = link_state_list[j - 1]->router_id[i];
+            e.device_id = ip2device[a[k]];
             e.mask = link_state_list[j - 1]->mask[i];
             e.IP_addr.s_addr = e.IP_addr.s_addr & e.mask.s_addr;
             bool exist = false;
             for(auto &en: routing_table){
-                if(en.IP_addr.s_addr == e.IP_addr.s_addr){
+                if((en.IP_addr.s_addr == e.IP_addr.s_addr) &&
+                   (en.mask.s_addr == e.mask.s_addr))
+                {
                     exist = true;
                     break;
                 }
@@ -289,13 +324,12 @@ RoutingTable::shortest_path()
     }
     table_mutex.unlock();
 
-    bool print = true;
-    if(print){
-        for(int i = 0; i < n; i++){
-            for(int j = 0; j < n; j++){
-                printf("%4d  ", dist[i][j]);
-            }
-            printf("%4d\n", state[i].length);
+#ifdef PRINT
+    for(int i = 0; i < n; i++){
+        for(int j = 0; j < n; j++){
+            printf("%4d  ", dist[i][j]);
         }
+        printf("%4d\n", state[i].length);
     }
+#endif
 }

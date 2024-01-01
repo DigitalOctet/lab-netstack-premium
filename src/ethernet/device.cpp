@@ -362,9 +362,10 @@ Device::handle_ARP(const u_char *buf)
     // Handle a request or reply.
     bool ret;
     arp_mutex.lock();
+    // Reply ARP has exact MAC and IP address.
     if(IS_ARP_REQUEST(arp->opcode)){
         memcpy(dst_MAC_addr, arp->sender_MAC_addr, ETHER_ADDR_LEN);
-        ret = reply_ARP(mac_addr, *(struct in_addr *)arp->target_IP_addr, 
+        ret = reply_ARP(mac_addr, ip_addr, 
                         arp->sender_MAC_addr, 
                         *(struct in_addr *)arp->sender_IP_addr);
     }
@@ -419,8 +420,7 @@ Device::reply_ARP(
  * @return true on success, false on failure.
  */
 bool 
-Device::request_ARP(
-)
+Device::request_ARP()
 {
     u_char target_MAC[ETHER_ADDR_LEN];
     for(int i = 0; i < ETHER_ADDR_LEN; i++){

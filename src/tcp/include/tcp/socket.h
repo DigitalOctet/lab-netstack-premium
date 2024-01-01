@@ -10,6 +10,9 @@
 #include <netdb.h>
 #include <unistd.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 /**
  * @see [POSIX.1-2017: socket]
  * (http://pubs.opengroup.org/onlinepubs/9699919799/functions/socket.html)
@@ -67,3 +70,6 @@ int __wrap_close(int fildes);
  */
 int __wrap_getaddrinfo(const char *node, const char *service,
                        const struct addrinfo *hints, struct addrinfo **res);
+#ifdef __cplusplus
+}
+#endif

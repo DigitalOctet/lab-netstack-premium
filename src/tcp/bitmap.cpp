@@ -86,7 +86,7 @@ BitMap::bitmap_size()
 void
 BitMap::bitmap_set(size_t idx, bool value) 
 {
-    if (idx < bit_cnt) {
+    if (idx >= bit_cnt) {
         exit(-1);
     }
     if (value)
@@ -140,7 +140,7 @@ BitMap::bitmap_flip (size_t bit_idx)
 bool
 BitMap::bitmap_test(size_t idx) 
 {
-    if (idx < bit_cnt) {
+    if (idx >= bit_cnt) {
         fprintf(stderr, "IDX is too big!\n");
         exit(-1);
     }
