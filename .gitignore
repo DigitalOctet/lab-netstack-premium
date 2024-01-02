@@ -4,3 +4,9 @@ lab1
 lab2
 lab3
 *.tar
+src/tests/lab3-transport-layer/client
+src/tests/lab3-transport-layer/server
+src/tests/lab3-transport-layer/echo_client
+src/tests/lab3-transport-layer/echo_server
+src/tests/lab3-transport-layer/perf_client
+src/tests/lab3-transport-layer/perf_server

@@ -74,6 +74,9 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Message is damaged! \"%s\" \"%s\"\n", message, buf);
         exit(0);
     }
+    else{
+        printf("Undamaged massage: %s\n", buf);
+    }
     close(clientfd);
     
     return 0;

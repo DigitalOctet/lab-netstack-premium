@@ -59,7 +59,7 @@ I used link state routing algorithm. I'll describe it in 5 steps.
      2. If a router or host crashes and reboots, the sequence number will begin with 0. These packets with small seqs will be discarded. I use an age field to solve the problem. If a host doesn't receive a new packet with larger seq number or update its stored link state packets for a while, the stored packet will be discarded and newly receiving packets with smaller seq can be used.
 
 5. **Calculate new routes.** Every routes runs Dijkstra algorithm to compute the shortest paths and updates its routing table at regular intervals.
-  **Corner cases here:**
+    **Corner cases here:**
 
   * When receiving and sending packets, routers will use the routing table. In my implementation, I use two threads separately deals with receiving packets and sending ARP/HELLO/LinkState packets. So I made use of some mutexes to protect routing table.
   * If the destination host is in the same Ethernet with the source host when updating the routing table, I decide to set the IP address field to the full IP address and netmask to `255.255.255.255`. This way, I can accurately determine which is the target host. Moreover, it complies with the "longest prefix matching" rule.

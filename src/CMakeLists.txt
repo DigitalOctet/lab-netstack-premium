@@ -24,6 +24,11 @@ set(TARGETS_LAB2
 set(TARGETS_LAB3
     client
     server)
+set(TARGETS_CP
+    echo_server
+    echo_client
+    perf_server
+    perf_client)
 
 # Add subdirectories
 add_subdirectory(ethernet)
@@ -54,6 +59,12 @@ endforeach()
 foreach(TARGET_NAME ${TARGETS_LAB3})
     add_executable(${TARGET_NAME} tests/lab3-transport-layer/${TARGET_NAME}.c
                                   tests/lab3-transport-layer/util.c)
+    link_targets(${TARGET_NAME})
+endforeach()
+
+foreach(TARGET_NAME ${TARGETS_CP})
+    add_executable(${TARGET_NAME} tests/lab3-transport-layer/${TARGET_NAME}.c
+                                  tests/lab3-transport-layer/unp.c)
     link_targets(${TARGET_NAME})
 endforeach()
 

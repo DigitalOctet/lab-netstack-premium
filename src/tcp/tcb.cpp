@@ -129,16 +129,17 @@ TCB::setAcknowledgement(unsigned int acknowledgement)
 u_short
 TCB::getWindow()
 {
-    return window.size;
+    return window.size > UINT16_MAX ? UINT16_MAX : window.size;
 }
 
 /**
  * @brief Write LEN bytes to window from BUF.
  */
 void 
-TCB::writeWindow(const u_char *buf, int len)
+TCB::writeWindow(const u_char *buf, int len, bool push)
 {
     window.mutex.lock();
+    window.push = push || window.push;
     int rest = window.n - window.rear;
     if(rest >= len){
         memcpy(window.buf + window.rear, buf, len);
@@ -154,9 +155,15 @@ TCB::writeWindow(const u_char *buf, int len)
 
 /**
  * @brief Read LEN bytes from window to BUF.
+ * 
+ * @param buf buffer to read to
+ * @param len maximum length to read
+ * @param nread pointer to number of bytes that have been read.
+ * @return Whether PUSH is on. If PUSH is on, `read` will return immediately. 
+ * Otherwise, it will suspend until LEN bytes have been read or PUSH becomes on.
  */
-ssize_t 
-TCB::readWindow(u_char *buf, int len)
+bool 
+TCB::readWindow(u_char *buf, int len, ssize_t *nread)
 {
     window.mutex.lock();
     len = (len > window.n - window.size) ? (window.n - window.size) : len;
@@ -172,8 +179,16 @@ TCB::readWindow(u_char *buf, int len)
         window.front = (window.front + len) % window.n;
         window.size += len;
     }
+    *nread = len;
+    if(window.push){
+        if(window.size == window.n){
+            window.push = false;
+        }
+        window.mutex.unlock();
+        return true;
+    }
     window.mutex.unlock();
-    return len;
+    return false;
 }
 
 /**

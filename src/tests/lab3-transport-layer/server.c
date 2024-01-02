@@ -75,7 +75,7 @@ int main(int argc, char *argv[])
                   client_hostname, INET_ADDRSTRLEN);
         client_port = ntohs(((struct sockaddr_in *)&clientaddr)->sin_port);
         printf("connected to (%s %d)\n", client_hostname, client_port);
-        while((n = rio_readn(connfd, bufp, 10)) != 0){
+        while((n = rio_readn(connfd, bufp, 1)) != 0){
             printf("server received %d byte(s)\n", (int)n);
             rio_writen(connfd, bufp, n);
             bufp += n;

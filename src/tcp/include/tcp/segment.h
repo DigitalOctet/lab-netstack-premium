@@ -39,9 +39,11 @@
 /* Data Offset */
 #define DEFAULT_OFF (5 << 4)
 #define GET_OFF(x)  (((u_char)(x) >> 2) & ~0x3)
+/* Maximum segment length due to Ethernet II */
+#define MAX_SEG_LEN 1460
 
 /* Time to retransmit a segment(in 5 milliseconds) */
-#define RETRANS_TIME 4000
+#define RETRANS_TIME 25000
 
 /* Segment type */
 namespace SegmentType {

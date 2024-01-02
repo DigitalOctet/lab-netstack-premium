@@ -36,8 +36,8 @@ TransportLayer::TransportLayer(): fd2tcb(), tcbs(), bitmap(PORT_END)
     }
 
     network_layer = new NetworkLayer(this);
-    std::this_thread::sleep_for(std::chrono::milliseconds(50000));
-    // std::thread(&TransportLayer::updateRetrans, this).detach();
+    std::this_thread::sleep_for(std::chrono::milliseconds(10000));
+    std::thread(&TransportLayer::updateRetrans, this).detach();
 }
 
 /**
@@ -329,6 +329,7 @@ TransportLayer::_accept(int socket, struct sockaddr *address,
     }
     listen_tcb->bind_mutex.unlock();
 
+    tcb_mutex.lock();
     listen_tcb->pending_mutex.lock();
     if(listen_tcb->pending.empty()){
         listen_tcb->pending_mutex.unlock();
@@ -342,7 +343,6 @@ TransportLayer::_accept(int socket, struct sockaddr *address,
 
     // Create file description and bind it to the connected tcb.
     int fd = dup(default_fd);
-    tcb_mutex.lock();
     fd2tcb[fd] = conn_tcb;
     tcbs.insert(conn_tcb);
     tcb_mutex.unlock();
@@ -389,36 +389,31 @@ TransportLayer::_read(int fildes, void *buf, size_t nbyte)
 
     // Busy waiting can happen here
     u_char *bufp = (u_char *)buf;
+    bool push = false;
     while(nbyte > 0){
-        n = tcb->readWindow(bufp, nbyte);
+        push = tcb->readWindow(bufp, nbyte, &n);
         if(n > 0){
             nbyte -= n;
             nread += n;
             bufp += n;
-            tcb->conn_mutex.lock();
-            sendSegment(tcb, SegmentType::ACK, NULL, 0);
-            tcb->conn_mutex.unlock();
         }
-        if(tcb->state == ConnectionState::CLOSE_WAIT){
+        if((tcb->state == ConnectionState::CLOSE_WAIT) || push){
             break;
         }
     }
 
     tcb->conn_mutex.lock();
+    if(nread > 0){
+        sendSegment(tcb, SegmentType::ACK, NULL, 0);
+    }
     tcb->reading_cnt--;
     if(tcb->closed){
         if((tcb->reading_cnt == 0) && (tcb->writing_cnt == 0)){
             tcb->state = ConnectionState::FIN_WAIT1;
             sendSegment(tcb, SegmentType::FIN_ACK, NULL, 0);
-            tcb->conn_mutex.unlock();
-        }
-        else{
-            tcb->conn_mutex.unlock();
         }
     }
-    else{
-        tcb->conn_mutex.unlock();
-    }
+    tcb->conn_mutex.unlock();
 
     return nread;
 }
@@ -493,15 +488,9 @@ TransportLayer::_write(int fildes, const void *buf, size_t nbyte)
         if((tcb->reading_cnt == 0) && (tcb->writing_cnt == 0)){
             tcb->state = ConnectionState::FIN_WAIT1;
             sendSegment(tcb, SegmentType::FIN_ACK, NULL, 0);
-            tcb->conn_mutex.unlock();
-        }
-        else{
-            tcb->conn_mutex.unlock();
         }
     }
-    else{
-        tcb->conn_mutex.unlock();
-    }
+    tcb->conn_mutex.unlock();
     
     return nwrite;
 }
@@ -612,6 +601,7 @@ TransportLayer::_close(int fildes)
                 sendSegment(tcb, SegmentType::FIN_ACK, NULL, 0);
                 tcb->conn_mutex.unlock();
                 sem_wait(&tcb->fin_sem);
+                delete tcb;
             }
             else{
                 tcb->conn_mutex.unlock();
@@ -625,6 +615,7 @@ TransportLayer::_close(int fildes)
                 sendSegment(tcb, SegmentType::FIN_ACK, NULL, 0);
                 tcb->conn_mutex.unlock();
                 sem_wait(&tcb->fin_sem);
+                delete tcb;
             }
             else{
                 tcb->conn_mutex.unlock();
@@ -632,6 +623,8 @@ TransportLayer::_close(int fildes)
             return 0;
         }
     }
+    tcb_mutex.unlock();
+    tcb->bind_mutex.unlock();
     return 0;
 }
 
@@ -735,83 +728,109 @@ bool
 TransportLayer::sendSegment(TCB *tcb, SegmentType::SegmentType type, 
                             const void *buf, int len)
 {
-    int rc;
-    int total_len = SIZE_PSEUDO + SIZE_TCP + len;
-    u_char *segment = new u_char[total_len];
-    memcpy(segment + SIZE_PSEUDO + SIZE_TCP, buf, len);
-    PseudoHeader *pseudo_header = (PseudoHeader *)segment;
-    TCPHeader *tcp_header = (TCPHeader *)(segment + SIZE_PSEUDO);
-
-    // Pseudo header
-    pseudo_header->src_addr = tcb->src_addr;
-    pseudo_header->dst_addr = tcb->dst_addr;
-    pseudo_header->zero = 0;
-    pseudo_header->protocol = IPPROTO_TCP;
-    pseudo_header->length = change_order((u_short)(SIZE_TCP + len));
-
-    // Port numbers
-    tcp_header->src_port = tcb->src_port;
-    tcp_header->dst_port = tcb->dst_port;
-    // Sequence number
-    tcp_header->seq = change_order(tcb->getSequence());
-    // Acknowledgement number
-    if(type != SegmentType::SYN){
-        tcp_header->ack = change_order(tcb->getAcknowledgement());
+    int times, length = len;
+    const u_char *bufp = (const u_char *)buf;
+    if(len == 0){
+        times = 1;
     }
     else{
-        tcp_header->ack = 0;
+        times = (len + MAX_SEG_LEN - 1) / MAX_SEG_LEN;
     }
-    // Data Offset
-    tcp_header->data_off = DEFAULT_OFF;
-    // Control Bits
-    switch (type)
-    {
-    case SegmentType::SYN:
-        tcp_header->ctl_bits = ControlBits::SYN;
-        tcb->updateSequence(1);
-        break;
-    
-    case SegmentType::SYN_ACK:
-        tcp_header->ctl_bits = ControlBits::SYN | ControlBits::ACK;
-        tcb->updateSequence(1);
-        break;
-    
-    case SegmentType::ACK:
-        tcp_header->ctl_bits = ControlBits::ACK;
-        tcb->updateSequence(len);
-        break;
-    
-    case SegmentType::FIN:
-        tcp_header->ctl_bits = ControlBits::FIN;
-        tcb->updateSequence(1);
-        break;
-    
-    case SegmentType::FIN_ACK:
-        tcp_header->ctl_bits = ControlBits::FIN | ControlBits::ACK;
-        tcb->updateSequence(1);
-        break;
+    for(int i = 0; i < times; i++){
+        if(length > MAX_SEG_LEN){
+            len = MAX_SEG_LEN;
+            length -= MAX_SEG_LEN;
+        }
+        else{
+            len = length;
+        }
 
-    default:
-        break;
-    }
-    // Window
-    tcp_header->window = change_order(tcb->getWindow());
-    // Checksum
-    tcp_header->checksum = 0;
-    // Urgent Pointer
-    if(!(tcp_header->ctl_bits & ControlBits::URG)){
-        tcp_header->urgent = 0;
-    }
-    tcp_header->checksum = calculate_checksum(segment, total_len);
+        int rc;
+        int total_len = SIZE_PSEUDO + SIZE_TCP + len;
+        u_char *segment = new u_char[total_len];
+        memcpy(segment + SIZE_PSEUDO + SIZE_TCP, bufp, len);
+        bufp += len;
+        PseudoHeader *pseudo_header = (PseudoHeader *)segment;
+        TCPHeader *tcp_header = (TCPHeader *)(segment + SIZE_PSEUDO);
 
-    rc = network_layer->sendIPPacket(tcb->src_addr, tcb->dst_addr, IPPROTO_TCP, 
-                                     segment + SIZE_PSEUDO, SIZE_TCP + len);
-    if(rc == -1){
-        std::cerr << "Send segment error!" << std::endl;
-        delete[] segment;
-        return false;
+        // Pseudo header
+        pseudo_header->src_addr = tcb->src_addr;
+        pseudo_header->dst_addr = tcb->dst_addr;
+        pseudo_header->zero = 0;
+        pseudo_header->protocol = IPPROTO_TCP;
+        pseudo_header->length = change_order((u_short)(SIZE_TCP + len));
+
+        // Port numbers
+        tcp_header->src_port = tcb->src_port;
+        tcp_header->dst_port = tcb->dst_port;
+        // Sequence number
+        tcp_header->seq = change_order(tcb->getSequence());
+        // Acknowledgement number
+        if(type != SegmentType::SYN){
+            tcp_header->ack = change_order(tcb->getAcknowledgement());
+        }
+        else{
+            tcp_header->ack = 0;
+        }
+        // Data Offset
+        tcp_header->data_off = DEFAULT_OFF;
+        // Control Bits
+        switch (type)
+        {
+        case SegmentType::SYN:
+            tcp_header->ctl_bits = ControlBits::SYN;
+            tcb->updateSequence(1);
+            break;
+        
+        case SegmentType::SYN_ACK:
+            tcp_header->ctl_bits = ControlBits::SYN | ControlBits::ACK;
+            tcb->updateSequence(1);
+            break;
+        
+        case SegmentType::ACK:
+            tcp_header->ctl_bits = ControlBits::ACK;
+            if(len != 0){
+                tcb->updateSequence(len);
+                if(i + 1 == times)
+                tcp_header->ctl_bits = ControlBits::ACK | ControlBits::PSH;
+            }
+            break;
+        
+        case SegmentType::FIN:
+            tcp_header->ctl_bits = ControlBits::FIN;
+            tcb->updateSequence(1);
+            break;
+        
+        case SegmentType::FIN_ACK:
+            tcp_header->ctl_bits = ControlBits::FIN | ControlBits::ACK;
+            tcb->updateSequence(1);
+            break;
+
+        default:
+            break;
+        }
+        // Window
+        tcp_header->window = change_order(tcb->getWindow());
+        // Checksum
+        tcp_header->checksum = 0;
+        // Urgent Pointer
+        if(!(tcp_header->ctl_bits & ControlBits::URG)){
+            tcp_header->urgent = 0;
+        }
+        tcp_header->checksum = calculate_checksum(segment, total_len);
+
+        rc = network_layer->sendIPPacket(tcb->src_addr, tcb->dst_addr, 
+                                         IPPROTO_TCP, segment + SIZE_PSEUDO, 
+                                         SIZE_TCP + len);
+        if(rc == -1){
+            std::cerr << "Send segment error!" << std::endl;
+            delete[] segment;
+            return false;
+        }
+        tcb->insertRetrans(segment, change_order(tcp_header->seq), 
+                           SIZE_TCP + len);
     }
-    tcb->insertRetrans(segment, change_order(tcp_header->seq), SIZE_TCP + len);
+    
     return true;
 }
 
@@ -1015,6 +1034,9 @@ TransportLayer::callBack(const u_char *buf, int len,
                             break;
                         }
                     }
+                    if(flag){
+                        break;
+                    }
                     for(auto i: it->pending)
                     {
                         if((i->dst_addr.s_addr == src_addr.s_addr) &&
@@ -1032,8 +1054,9 @@ TransportLayer::callBack(const u_char *buf, int len,
                             i->setDestWindow(window);
                             i->setSndUna(ack_num);
                             if(rest_len != 0){
-                                i->writeWindow(buf + header_len, rest_len);
+                                i->writeWindow(buf + header_len, rest_len, psh);
                             }
+                            break;
                         }
                     }
                 }
@@ -1059,7 +1082,7 @@ TransportLayer::callBack(const u_char *buf, int len,
                     it->setDestWindow(window);
                     it->setSndUna(ack_num);
                     if(rest_len != 0){
-                        it->writeWindow(buf + header_len, rest_len);
+                        it->writeWindow(buf + header_len, rest_len, psh);
                     }
                     it->conn_mutex.unlock();
                 }
@@ -1082,7 +1105,7 @@ TransportLayer::callBack(const u_char *buf, int len,
                     it->setAcknowledgement(seq + rest_len);
                     it->setDestWindow(window);
                     if(rest_len != 0){
-                        it->writeWindow(buf + header_len, rest_len);
+                        it->writeWindow(buf + header_len, rest_len, psh);
                         sendSegment(it, SegmentType::ACK, NULL, 0);
                     }
                     if(ack_num == it->getSequence()){
@@ -1109,7 +1132,6 @@ TransportLayer::callBack(const u_char *buf, int len,
                         tcbs.erase(it);
                         bitmap.bitmap_delete(change_order(it->src_port));
                         sem_post(&it->fin_sem);
-                        delete it;
                         break;
                     }
                 }
@@ -1120,6 +1142,7 @@ TransportLayer::callBack(const u_char *buf, int len,
                 it->conn_mutex.unlock();
                 break;
             }
+
             it->bind_mutex.unlock();
 
             if(flag){
@@ -1183,17 +1206,16 @@ TransportLayer::callBack(const u_char *buf, int len,
                     {
                         flag = true;
                         if(seq != i->getAcknowledgement()){
-                            i->conn_mutex.unlock();
                             break;
                         }
                         i->setAcknowledgement(seq + 1);
                         i->setDestWindow(window);
                         i->state = ConnectionState::CLOSE_WAIT;
                         sendSegment(i, SegmentType::ACK, NULL, 0);
-                        it->conn_mutex.unlock();
                         break;
                     }
                 }
+                it->conn_mutex.unlock();
             }
             else{
                 it->conn_mutex.unlock();
@@ -1223,7 +1245,6 @@ TransportLayer::timedWait(TCB *tcb)
     tcb_mutex.unlock();
     bitmap.bitmap_delete(change_order(tcb->src_port));
     sem_post(&tcb->fin_sem);
-    delete tcb;
     return;
 }
 

@@ -152,8 +152,8 @@ public:
     unsigned int getAcknowledgement();
     void setAcknowledgement(unsigned int ack);
     u_short getWindow();
-    void writeWindow(const u_char *buf, int len);
-    ssize_t readWindow(u_char *buf, int len);
+    void writeWindow(const u_char *buf, int len, bool push);
+    bool readWindow(u_char *buf, int len, ssize_t *nread);
     void setDestWindow(u_short window);
     u_short getDestWindow();
     void setMaxSegSize(u_short size);
